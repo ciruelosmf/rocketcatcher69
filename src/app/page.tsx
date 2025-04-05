@@ -4,7 +4,7 @@ import React, { Suspense, useRef, useEffect, useState, useLayoutEffect } from 'r
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, OrthographicCamera, Text } from '@react-three/drei';
 import * as THREE from 'three';
-
+import AxesHelperComponent from './AxesHelperComponent';
 // --- Constants ---
 // Scene
 const PLATFORM_Y = -16.5;
@@ -23,8 +23,8 @@ const PLATFORM_TOP_Y = PLATFORM_Y + PLATFORM_HEIGHT; // Result: -16.5 + 14.5 = -
 
 // --- Capture Zone Definition ---
 // This defines the target *volume* where the rocket needs to be for a successful catch
-const CAPTURE_ZONE_WIDTH = 0.8; // Must be within this horizontal width (centered)
-const CAPTURE_ZONE_DEPTH = 0.8; // Must be within this horizontal depth (centered)
+const CAPTURE_ZONE_WIDTH = 2.8; // Must be within this horizontal width (centered)
+const CAPTURE_ZONE_DEPTH = 2.8; // Must be within this horizontal depth (centered)
 // CAPTURE_TARGET_Y is the *ideal* Y coordinate for the ROCKET'S CENTER during capture.
 // Let's align it with the top of the platform structure for now.
 const CAPTURE_TARGET_Y = PLATFORM_TOP_Y; // Target Y = -2.0
@@ -37,7 +37,7 @@ const CAPTURE_ZONE_MAX_Y = CAPTURE_TARGET_Y + CAPTURE_VERTICAL_TOLERANCE; // -1.
 
 
 // --- Capture Time ---
-const REQUIRED_CAPTURE_TIME = 2.0; // Seconds required inside the zone
+const REQUIRED_CAPTURE_TIME = 0.1; // Seconds required inside the zone
 
 
 // Rocket Physics & Control
@@ -88,7 +88,7 @@ const RESET_KEY = 'r';
 type GameState = 'playing' | 'landed' | 'crashed' | 'resetting';
 
 // Wind
-const WIND_MAX_STRENGTH = 0.3;
+const WIND_MAX_STRENGTH = 0.001; // 0 orginal
 const getRandomWindVector = (): THREE.Vector3 => {
     const angle = Math.random() * Math.PI * 2;
     const strength = Math.random() * WIND_MAX_STRENGTH;
@@ -165,7 +165,7 @@ const CaptureZoneVisualizer = () => {
 
     return (
         <mesh position={visualizerPosition} name="captureZoneVisualizer">
-            <boxGeometry args={[CAPTURE_ZONE_WIDTH, visualizerHeight, CAPTURE_ZONE_DEPTH]} />
+            <boxGeometry args={[CAPTURE_ZONE_WIDTH, visualizerHeight+12, CAPTURE_ZONE_DEPTH]} />
             <meshStandardMaterial
                 color="yellow" // Use a distinct color
                 transparent={true}
@@ -353,9 +353,13 @@ const FallingRocket = () => {
 
 
       if (isInVerticalZone) {
+        console.log(isInVerticalZone, "if (isInVerticalZone)_____________");
+
         // Check if rocket's CENTER is horizontally within the capture zone bounds
-        const isInHorizontalZoneX = Math.abs(currentPosition.x - PLATFORM_CENTER_X) <= CAPTURE_ZONE_WIDTH / 2;
+        const isInHorizontalZoneX = Math.abs(currentPosition.x - PLATFORM_CENTER_X -1 ) <= CAPTURE_ZONE_WIDTH / 2;
         const isInHorizontalZoneZ = Math.abs(currentPosition.z - PLATFORM_CENTER_Z) <= CAPTURE_ZONE_DEPTH / 2;
+        console.log(isInHorizontalZoneX, "if (isInHorizontalZoneX)");
+        console.log(isInHorizontalZoneZ, "if (isInHorizontalZoneZ)");
 
         // --- Placeholder for future checks ---
         // TODO: Add speed and tilt checks here later
@@ -371,6 +375,7 @@ const FallingRocket = () => {
 
             // Update status message to show timer progress
             setStatusMessage(`In capture zone... Holding for ${timeInCaptureZoneRef.current.toFixed(1)} / ${REQUIRED_CAPTURE_TIME.toFixed(1)}s`);
+            console.log(REQUIRED_CAPTURE_TIME, "REQUIRED_CAPTURE_TIME");
 
             // Check if required time has been reached
             if (timeInCaptureZoneRef.current >= REQUIRED_CAPTURE_TIME) {
@@ -483,7 +488,7 @@ const MultiViewRenderer = () => {
     const pipWidth = Math.floor(size.width / 4);
     const pipHeight = Math.floor(size.height / 4);
     const pipX = size.width - pipWidth - 10;
-    const pipY = 10;
+    const pipY = 100;
     const pipViewport = { x: pipX, y: pipY, width: pipWidth, height: pipHeight };
 
     gl.autoClear = false;
@@ -532,7 +537,16 @@ const RocketLandingScene = () => {
 
   return (
     <Canvas
-      style={{ width: '100vw', height: '100vh', background: '#FFB266' }}
+      style={{ 
+        position: 'fixed', // Position it relative to the viewport
+        top: 0,
+        left: 0,
+        width: '100%',    // Fill the width of the viewport
+        height: '100%',   // Fill the height of the viewport
+        background: '#FFB266',
+        touchAction: 'none' 
+      
+      }}
       shadows
       // Disable default rendering loop if using custom MultiViewRenderer that handles it
       // frameloop="demand" // Or manage manually if MultiViewRenderer isn't rendering every frame
@@ -550,7 +564,7 @@ const RocketLandingScene = () => {
             // top={frustumSize / 2}
             // bottom={-frustumSize / 2}
         />
-
+<AxesHelperComponent size={1} /> {/* Adjust size as needed */}
       {/* Lighting */}
       <ambientLight intensity={0.5} />
       <directionalLight

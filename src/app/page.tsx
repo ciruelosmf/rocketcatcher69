@@ -23,21 +23,22 @@ const PLATFORM_TOP_Y = PLATFORM_Y + PLATFORM_HEIGHT; // Result: -16.5 + 14.5 = -
 
 // --- Capture Zone Definition ---
 // This defines the target *volume* where the rocket needs to be for a successful catch
-const CAPTURE_ZONE_WIDTH = 2.8; // Must be within this horizontal width (centered)
-const CAPTURE_ZONE_DEPTH = 2.8; // Must be within this horizontal depth (centered)
+const CAPTURE_ZONE_WIDTH = 1.0; // Must be within this horizontal width (centered)
+const CAPTURE_ZONE_DEPTH = 1.0; // Must be within this horizontal depth (centered)
 // CAPTURE_TARGET_Y is the *ideal* Y coordinate for the ROCKET'S CENTER during capture.
 // Let's align it with the top of the platform structure for now.
 const CAPTURE_TARGET_Y = PLATFORM_TOP_Y; // Target Y = -2.0
 // CAPTURE_VERTICAL_TOLERANCE allows the rocket center to be slightly above/below the target Y
-const CAPTURE_VERTICAL_TOLERANCE = 0.5; // Rocket center can be from -2.5 to -1.5
+const CAPTURE_VERTICAL_TOLERANCE = 1.0; // Rocket center can be from -2.5 to -1.5
 // Min/Max Y coordinates for the rocket's CENTER to be in the zone
 const CAPTURE_ZONE_MIN_Y = CAPTURE_TARGET_Y - CAPTURE_VERTICAL_TOLERANCE; // -2.5
-const CAPTURE_ZONE_MAX_Y = CAPTURE_TARGET_Y + CAPTURE_VERTICAL_TOLERANCE; // -1.5
+const CAPTURE_ZONE_MAX_Y = CAPTURE_TARGET_Y + CAPTURE_VERTICAL_TOLERANCE ; // -1.5
+console.log(CAPTURE_TARGET_Y,CAPTURE_ZONE_MIN_Y,CAPTURE_ZONE_MAX_Y  ,"CAPTURE_TARGET_Y...");
 
 
 
 // --- Capture Time ---
-const REQUIRED_CAPTURE_TIME = 0.1; // Seconds required inside the zone
+const REQUIRED_CAPTURE_TIME = 2.1; // Seconds required inside the zone
 
 
 // Rocket Physics & Control
@@ -108,8 +109,8 @@ const COCKPIT_CAMERA_NAME = "cockpitCamera";
 const LandingFloor = () => {
   return (
     <mesh position={[0, PLATFORM_Y, 0]} receiveShadow name="floor">
-      <boxGeometry args={[34, FLOOR_HEIGHT, 34]} />
-      <meshStandardMaterial color="#85F355" />
+      <boxGeometry args={[64, FLOOR_HEIGHT, 64]} />
+      <meshStandardMaterial color="#3aa2f6" metalness={4.8} roughness={2.3} />
     </mesh>
   );
 };
@@ -147,6 +148,11 @@ const LandingPlatform = () => {
     );
   };
 
+
+
+
+  
+
 /**
  * NEW: Capture Zone Visualizer Component
  * Renders a semi-transparent box representing the target landing volume.
@@ -165,16 +171,91 @@ const CaptureZoneVisualizer = () => {
 
     return (
         <mesh position={visualizerPosition} name="captureZoneVisualizer">
-            <boxGeometry args={[CAPTURE_ZONE_WIDTH, visualizerHeight+12, CAPTURE_ZONE_DEPTH]} />
+            <boxGeometry args={[CAPTURE_ZONE_WIDTH, visualizerHeight, CAPTURE_ZONE_DEPTH]} />
             <meshStandardMaterial
                 color="yellow" // Use a distinct color
                 transparent={true}
-                opacity={0.3} // Make it semi-transparent
+                opacity={0.45} // Make it semi-transparent
                 depthWrite={false} // Optional: prevent writing to depth buffer if it causes Z-fighting
             />
         </mesh>
     );
 };
+
+
+
+
+const CUBE_SIZE = 1; // Size of each side of the cube
+const CUBE_GEOMETRY_ARGS = [CUBE_SIZE, CUBE_SIZE, CUBE_SIZE];
+const CUBE_MATERIAL_PROPS = {
+    color: "red",
+    transparent: true,
+    opacity: 0.45,
+    depthWrite: false, // Keep original material properties
+};
+const MAX_CUBES = 10;
+
+/**
+ * Creates a vertical stack of semi-transparent cubes.
+ * @param {object} props - Component props.
+ * @param {number} [props.count=5] - The number of cubes to stack (capped at 10).
+ * @param {THREE.Vector3 | [number, number, number]} [props.position=[0, 0, 0]] - The base position for the bottom cube's center.
+ */
+const CubeStackVisualizer = ({ count = 5, position = [0, 0, 0] }) => {
+    // Ensure count is an integer between 1 and MAX_CUBES
+    const actualCount = Math.max(1, Math.min(MAX_CUBES, Math.floor(count)));
+
+    // Calculate positions for each cube
+    const cubes = [];
+    for (let i = 0; i < actualCount; i++) {
+        // Calculate the Y position for the center of the current cube
+        // The first cube's center (i=0) is at Y = CUBE_SIZE / 2
+        // Each subsequent cube is CUBE_SIZE higher
+        const yPosition = (CUBE_SIZE / 2) + (i * CUBE_SIZE);
+
+        // Create the position vector relative to the group's position
+        // We use a group so the 'position' prop applies to the whole stack base
+        const cubePosition = [0, yPosition-5, 0]; // X and Z are relative to the group
+
+        cubes.push(
+            <mesh
+                key={i} // Important: Unique key for list rendering
+                position={cubePosition}
+                name={`CubeUnitVisualizer_${i}`} // Optional: Unique name per cube
+            >
+                <boxGeometry args={CUBE_GEOMETRY_ARGS} />
+                <meshStandardMaterial {...CUBE_MATERIAL_PROPS} />
+            </mesh>
+        );
+    }
+
+    // Render all cubes within a group, applying the overall position prop to the group
+    return (
+        <group position={position}>
+            {cubes}
+        </group>
+    );
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 /**
@@ -327,13 +408,6 @@ const FallingRocket = () => {
         currentPosition.y += currentVelocity.y * dt;
         currentPosition.z += currentVelocity.z * dt;
 
-
-
-
-
-
-
-
         // --- 5. Handle Rotation Animation ---
         let targetRotationZ = 0;
         if (keysPressed.current.has(LEFT_KEY))  targetRotationZ = ROCKET_TILT_ANGLE_Z;
@@ -352,14 +426,58 @@ const FallingRocket = () => {
       const isInVerticalZone = currentPosition.y >= CAPTURE_ZONE_MIN_Y && currentPosition.y <= CAPTURE_ZONE_MAX_Y;
 
 
+      //console.log(isInVerticalZone, "if (isInVerticalZone)_____________");
+      //console.log(currentPosition.y , " (currentPosition.y ");
+      //console.log( CAPTURE_ZONE_MIN_Y, "CAPTURE_ZONE_MIN_Y");
+     // console.log(CAPTURE_ZONE_MAX_Y, " CAPTURE_ZONE_MAX_Y");
+      //console.log( "");
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       if (isInVerticalZone) {
-        console.log(isInVerticalZone, "if (isInVerticalZone)_____________");
 
         // Check if rocket's CENTER is horizontally within the capture zone bounds
-        const isInHorizontalZoneX = Math.abs(currentPosition.x - PLATFORM_CENTER_X -1 ) <= CAPTURE_ZONE_WIDTH / 2;
+
+
+
+        const isInHorizontalZoneX = Math.abs(currentPosition.x - PLATFORM_CENTER_X +1 ) <= CAPTURE_ZONE_WIDTH / 2;
+
+        //console.log( currentPosition.x,"currentPosition.x");
+        //console.log( PLATFORM_CENTER_X,"PLATFORM_CENTER_X");
+        //console.log( CAPTURE_ZONE_WIDTH,"CAPTURE_ZONE_WIDTH");
+        //console.log( isInHorizontalZoneX,"isInHorizontalZoneX");
+        //console.log(( currentPosition.x - PLATFORM_CENTER_X +1),"=currentPosition.x - PLATFORM_CENTER_X +1", "CAPTURE_ZONE_WIDTH / 2=",CAPTURE_ZONE_WIDTH / 2);
+
+       // console.log( "");
+
+
+
         const isInHorizontalZoneZ = Math.abs(currentPosition.z - PLATFORM_CENTER_Z) <= CAPTURE_ZONE_DEPTH / 2;
-        console.log(isInHorizontalZoneX, "if (isInHorizontalZoneX)");
-        console.log(isInHorizontalZoneZ, "if (isInHorizontalZoneZ)");
+
+
+
+         // console.log(Math.abs(currentPosition.x - PLATFORM_CENTER_X -1 ), "abs / CAPTURE_ZONE_WIDTH div 2", CAPTURE_ZONE_WIDTH / 2);
+
+          //console.log( "");
+         // console.log( currentPosition.z ,",,,", PLATFORM_CENTER_Z,"currentPosition.z ,,,,,, PLATFORM_CENTER_Z");
+ 
+
+          //console.log(Math.abs(currentPosition.z - PLATFORM_CENTER_Z ), "abs / CAPTURE_ZONE_WIDTH div 2", CAPTURE_ZONE_DEPTH / 2);
 
         // --- Placeholder for future checks ---
         // TODO: Add speed and tilt checks here later
@@ -375,7 +493,8 @@ const FallingRocket = () => {
 
             // Update status message to show timer progress
             setStatusMessage(`In capture zone... Holding for ${timeInCaptureZoneRef.current.toFixed(1)} / ${REQUIRED_CAPTURE_TIME.toFixed(1)}s`);
-            console.log(REQUIRED_CAPTURE_TIME, "REQUIRED_CAPTURE_TIME");
+            console.log(statusMessage);
+ 
 
             // Check if required time has been reached
             if (timeInCaptureZoneRef.current >= REQUIRED_CAPTURE_TIME) {
@@ -488,7 +607,7 @@ const MultiViewRenderer = () => {
     const pipWidth = Math.floor(size.width / 4);
     const pipHeight = Math.floor(size.height / 4);
     const pipX = size.width - pipWidth - 10;
-    const pipY = 100;
+    const pipY = 731;
     const pipViewport = { x: pipX, y: pipY, width: pipWidth, height: pipHeight };
 
     gl.autoClear = false;
@@ -586,6 +705,7 @@ const RocketLandingScene = () => {
         <LandingPlatform />
         {/* Add the capture zone visualizer */}
         <CaptureZoneVisualizer />
+        < CubeStackVisualizer/>
         <FallingRocket /> {/* Contains game state logic */}
         <LandingFloor/>
         {/* <Text> component could be added here for status messages if state is lifted */}

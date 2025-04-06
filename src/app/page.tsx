@@ -31,7 +31,7 @@ const CAPTURE_TARGET_Y = PLATFORM_TOP_Y; // Target Y = -2.0
 // CAPTURE_VERTICAL_TOLERANCE allows the rocket center to be slightly above/below the target Y
 const CAPTURE_VERTICAL_TOLERANCE = 1.0; // Rocket center can be from -2.5 to -1.5
 // Min/Max Y coordinates for the rocket's CENTER to be in the zone
-const CAPTURE_ZONE_MIN_Y = CAPTURE_TARGET_Y - CAPTURE_VERTICAL_TOLERANCE; // -2.5
+const CAPTURE_ZONE_MIN_Y =   -2  // CAPTURE_TARGET_Y - CAPTURE_VERTICAL_TOLERANCE;  -2.5
 const CAPTURE_ZONE_MAX_Y = CAPTURE_TARGET_Y + CAPTURE_VERTICAL_TOLERANCE ; // -1.5
 console.log(CAPTURE_TARGET_Y,CAPTURE_ZONE_MIN_Y,CAPTURE_ZONE_MAX_Y  ,"CAPTURE_TARGET_Y...");
 
@@ -44,7 +44,7 @@ const REQUIRED_CAPTURE_TIME = 2.1; // Seconds required inside the zone
 // Rocket Physics & Control
 const ROCKET_START_Y = 1;
 const ROCKET_START_XZ_RANGE = 8;
-const ROCKET_HEIGHT = 6;
+const ROCKET_HEIGHT = 7.1;
 const ROCKET_WIDTH = 0.5;
 const ROCKET_BASE_OFFSET = ROCKET_HEIGHT / 2; // Distance from center to base (3.0)
 const ROCKET_CENTER_TO_TOP = ROCKET_HEIGHT / 2; // Distance from center to top (3.0)
@@ -160,12 +160,12 @@ const LandingPlatform = () => {
 const CaptureZoneVisualizer = () => {
     // The visualizer box should represent the entire vertical tolerance range.
     // Its height is therefore `CAPTURE_VERTICAL_TOLERANCE * 2`.
-    const visualizerHeight = CAPTURE_VERTICAL_TOLERANCE * 6;
+    const visualizerHeight = CAPTURE_VERTICAL_TOLERANCE * 6; // 6.0
 
     // The box needs to be centered vertically at CAPTURE_TARGET_Y.
     const visualizerPosition = new THREE.Vector3(
         PLATFORM_CENTER_X-1,
-        CAPTURE_TARGET_Y-3, // Center the visual box at the target Y
+        CAPTURE_TARGET_Y-3.8, // Center the visual box at the target Y
         PLATFORM_CENTER_Z
     );
 
@@ -215,7 +215,7 @@ const CubeStackVisualizer = ({ count = 5, position = [0, 0, 0] }) => {
 
         // Create the position vector relative to the group's position
         // We use a group so the 'position' prop applies to the whole stack base
-        const cubePosition = [0, yPosition-5, 0]; // X and Z are relative to the group
+        const cubePosition = [-0.1, yPosition-5, 0]; // X and Z are relative to the group
 
         cubes.push(
             <mesh
@@ -265,7 +265,9 @@ const getRandomStartPosition = (): THREE.Vector3 => {
     const range = ROCKET_START_XZ_RANGE;
     const randomX = Math.random() * range * 2 - range;
     const randomZ = Math.random() * range * 2 - range;
-    return new THREE.Vector3(randomX, ROCKET_START_Y, randomZ);
+    // return new THREE.Vector3(randomX, ROCKET_START_Y, randomZ); original
+    return new THREE.Vector3(-2, 2, 1); // set to easy to start to debug
+
 };
 
 

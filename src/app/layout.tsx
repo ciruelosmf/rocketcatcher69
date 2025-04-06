@@ -14,8 +14,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Building three Fiber app with Next JS",
-  description: "three Fiber app",
+  title: "RocketGrab",
+  description: "Rocket Landing Low-Level Simulation Game ",
 };
 
 export default function RootLayout({

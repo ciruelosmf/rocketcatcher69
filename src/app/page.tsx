@@ -5,6 +5,12 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, OrthographicCamera, Text } from '@react-three/drei';
 import * as THREE from 'three';
 import AxesHelperComponent from './AxesHelperComponent';
+
+
+import Flame from './FlameComponent'; // Import the Flame component
+
+
+
 // --- Constants ---
 // Scene
 const PLATFORM_Y = -16.5;
@@ -31,8 +37,8 @@ const CAPTURE_TARGET_Y = PLATFORM_TOP_Y; // Target Y = -2.0
 // CAPTURE_VERTICAL_TOLERANCE allows the rocket center to be slightly above/below the target Y
 const CAPTURE_VERTICAL_TOLERANCE = 1.0; // Rocket center can be from -2.5 to -1.5
 // Min/Max Y coordinates for the rocket's CENTER to be in the zone
-const CAPTURE_ZONE_MIN_Y =   -2  // CAPTURE_TARGET_Y - CAPTURE_VERTICAL_TOLERANCE;  -2.5
-const CAPTURE_ZONE_MAX_Y = CAPTURE_TARGET_Y + CAPTURE_VERTICAL_TOLERANCE ; // -1.5
+const CAPTURE_ZONE_MIN_Y =   -9.0  // CAPTURE_TARGET_Y - CAPTURE_VERTICAL_TOLERANCE;  -2.5
+const CAPTURE_ZONE_MAX_Y = -2.8 ; // -1.5
 console.log(CAPTURE_TARGET_Y,CAPTURE_ZONE_MIN_Y,CAPTURE_ZONE_MAX_Y  ,"CAPTURE_TARGET_Y...");
 
 
@@ -429,9 +435,9 @@ const FallingRocket = () => {
 
 
       //console.log(isInVerticalZone, "if (isInVerticalZone)_____________");
-      //console.log(currentPosition.y , " (currentPosition.y ");
-      //console.log( CAPTURE_ZONE_MIN_Y, "CAPTURE_ZONE_MIN_Y");
-     // console.log(CAPTURE_ZONE_MAX_Y, " CAPTURE_ZONE_MAX_Y");
+     // console.log(currentPosition.y , " (currentPosition.y ");
+     // console.log( CAPTURE_ZONE_MIN_Y, "CAPTURE_ZONE_MIN_Y");
+     //console.log(CAPTURE_ZONE_MAX_Y, " CAPTURE_ZONE_MAX_Y");
       //console.log( "");
 
 
@@ -651,6 +657,16 @@ const MultiViewRenderer = () => {
  * Main Scene Component
  */
 const RocketLandingScene = () => {
+
+
+  const rocketBodyHeight = 8;
+  const rocketBodyRadius = 0.5;
+  const flameEmitterY = -rocketBodyHeight / 2; // Position flame below the body
+
+
+  
+
+
   // NOTE: Game state is currently managed within FallingRocket.
   // Consider lifting state up here if more components need it.
   // const [gameState, setGameState] = useState<GameState>('playing');
@@ -664,7 +680,7 @@ const RocketLandingScene = () => {
         left: 0,
         width: '100%',    // Fill the width of the viewport
         height: '100%',   // Fill the height of the viewport
-        background: '#FFB266',
+        background: '#aaB266',
         touchAction: 'none' 
       
       }}
@@ -685,6 +701,19 @@ const RocketLandingScene = () => {
             // top={frustumSize / 2}
             // bottom={-frustumSize / 2}
         />
+
+<Flame
+  position={[0, 12, 0]} // Emitter position
+  particleCount={800}             // More particles = denser flame
+  flameHeight={7}                 // How long the plume is
+  emitterRadius={0.3}             // Width at the nozzle
+  particleSize={2.2}              // Adjust particle size2
+  colorStart={new THREE.Color(0xfff0b0)} // Brighter core
+  colorEnd={new THREE.Color(0xff6600)}   // Orange/red edges
+  opacity={0.7}
+/>
+
+
 <AxesHelperComponent size={1} /> {/* Adjust size as needed */}
       {/* Lighting */}
       <ambientLight intensity={0.5} />

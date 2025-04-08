@@ -2,7 +2,7 @@
 
 import React, { Suspense, useRef, useEffect, useState, useLayoutEffect } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, OrthographicCamera, Text } from '@react-three/drei';
+import { OrbitControls, OrthographicCamera, Text, View, PerspectiveCamera } from '@react-three/drei';
 import * as THREE from 'three';
 import AxesHelperComponent from './AxesHelperComponent';
 
@@ -91,6 +91,11 @@ const DOWN_KEY = 'ArrowDown';
 const THRUST_KEY = ' ';
 const RESET_KEY = 'r';
 
+const ROCKET_MESH_NAME = "playerRocket"; // Name for the rocket mesh
+const COCKPIT_CAMERA_NAME = "cockpitCamera";
+ 
+
+
 // Game States
 type GameState = 'playing' | 'landed' | 'crashed' | 'resetting';
 
@@ -105,7 +110,6 @@ const getRandomWindVector = (): THREE.Vector3 => {
 }
 
 // Camera Names
-const COCKPIT_CAMERA_NAME = "cockpitCamera";
 
 // --- Components ---
 
@@ -280,7 +284,7 @@ const getRandomStartPosition = (): THREE.Vector3 => {
 /**
  * Player Controlled Rocket Component
  */
-const FallingRocket = () => {
+const FallingRocket = ({ rocketName }: { rocketName: string }) => {
   const rocketRef = useRef<THREE.Mesh>(null!);
   const velocity = useRef(new THREE.Vector3(0, 0, 0));
   const keysPressed = useRef(new Set<string>());
@@ -340,7 +344,7 @@ const FallingRocket = () => {
     return () => {
       if (rocketRef.current) rocketRef.current.remove(cockpitCamera);
     };
-  }, [cockpitCamera]);
+  }, [cockpitCamera]); 
 
   // --- Keyboard Event Handling ---
   useEffect(() => {
@@ -366,6 +370,17 @@ const FallingRocket = () => {
       window.removeEventListener('keyup', handleKeyUp);
     };
   }, [gameState, resetGame]);
+
+
+
+
+
+
+
+
+
+
+
 
 
   // --- Frame Update Logic (Physics, Collision, Animation) ---
@@ -593,7 +608,8 @@ const FallingRocket = () => {
    const rocketEmissive = gameState === 'landed' ? 'green' : gameState === 'crashed' ? 'darkred' : '#4682B4';
 
   return (
-    <mesh ref={rocketRef} position={initialPosition} castShadow>
+    <mesh ref={rocketRef} name={rocketName}   position={initialPosition} castShadow>
+     
       <boxGeometry args={[ROCKET_WIDTH, ROCKET_HEIGHT, ROCKET_WIDTH]} />
       <meshStandardMaterial color={rocketColor} emissive={rocketEmissive} metalness={0.5} roughness={0.5} />
       {/* Cockpit camera is added via useLayoutEffect */}
@@ -605,32 +621,83 @@ const FallingRocket = () => {
 /**
  * Component responsible for handling the multi-viewport rendering
  */
+
+
+
+const CockpitCameraUpdater = ({ rocketName, cameraName }: { rocketName: string, cameraName: string }) => {
+  const { scene } = useThree();
+
+  useFrame(() => {
+      const rocket = scene.getObjectByName(rocketName) as THREE.Mesh | undefined;
+      const cockpitCam = scene.getObjectByName(cameraName) as THREE.PerspectiveCamera | undefined;
+
+      if (rocket && cockpitCam) {
+          // Calculate desired camera position relative to rocket's current world matrix
+          // Position inside, near the top, slightly forward for view
+          const cameraPosition = new THREE.Vector3(0, ROCKET_CENTER_TO_TOP - 0.5, 0.1);
+          cameraPosition.applyMatrix4(rocket.matrixWorld); // Transform local offset to world space
+          cockpitCam.position.copy(cameraPosition);
+
+          // Calculate look-at point relative to rocket
+          // Look slightly down and forward from camera's new position
+          const lookAtOffset = new THREE.Vector3(0, -0.5, -2); // Adjust Z to look further/closer
+          const lookAtPosition = lookAtOffset.applyMatrix4(rocket.matrixWorld); // Transform local offset to world space
+          // OR simpler: look forward along rocket's negative Z axis, slightly tilted down
+          // const lookDirection = new THREE.Vector3(0, -0.2, -1); // Local direction
+          // lookDirection.transformDirection(rocket.matrixWorld); // Convert direction to world space
+          // lookAtPosition.copy(cameraPosition).add(lookDirection);
+
+          cockpitCam.lookAt(lookAtPosition);
+
+          // View component might handle aspect ratio updates based on portal size,
+          // but manual update can be safer if needed.
+          // cockpitCam.updateProjectionMatrix();
+      }
+  });
+
+  return null; // This component doesn't render anything itself
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const MultiViewRenderer = () => {
   const { gl, scene, camera, size } = useThree();
 
   useFrame(() => {
     const cockpitCam = scene.getObjectByName(COCKPIT_CAMERA_NAME) as THREE.PerspectiveCamera | undefined;
 
+    // Define viewports
     const mainViewport = { x: 0, y: 0, width: size.width, height: size.height };
     const pipWidth = Math.floor(size.width / 4);
     const pipHeight = Math.floor(size.height / 4);
     const pipX = size.width - pipWidth - 10;
-    const pipY = 731;
+    const pipY = size.height - pipHeight - 10; // Dynamic Y position
     const pipViewport = { x: pipX, y: pipY, width: pipWidth, height: pipHeight };
 
     gl.autoClear = false;
-    gl.clear();
+    gl.clear(); // Clears color and depth buffers for the entire canvas
 
     // Render Main View
     gl.setViewport(mainViewport.x, mainViewport.y, mainViewport.width, mainViewport.height);
     gl.setScissor(mainViewport.x, mainViewport.y, mainViewport.width, mainViewport.height);
     gl.setScissorTest(true);
     if (camera instanceof THREE.PerspectiveCamera) {
-        camera.aspect = mainViewport.width / mainViewport.height;
-        camera.updateProjectionMatrix();
+      camera.aspect = mainViewport.width / mainViewport.height;
+      camera.updateProjectionMatrix();
     } else if (camera instanceof THREE.OrthographicCamera) {
-        // Orthographic camera aspect ratio update might not be needed unless window resizes drastically
-        // If needed, adjust left/right/top/bottom based on aspect ratio
+      // Since makeDefault is used with @react-three/fiber, resizing is handled automatically
     }
     gl.render(scene, camera);
 
@@ -638,19 +705,32 @@ const MultiViewRenderer = () => {
     if (cockpitCam) {
       cockpitCam.aspect = pipViewport.width / pipViewport.height;
       cockpitCam.updateProjectionMatrix();
-      gl.setViewport(pipViewport.x, pipViewport.y, pipViewport.width, pipViewport.height);
+
+      // Set scissor for PiP area and clear depth buffer
       gl.setScissor(pipViewport.x, pipViewport.y, pipViewport.width, pipViewport.height);
       gl.setScissorTest(true);
+      gl.clear(gl.DEPTH_BUFFER_BIT); // Clear depth buffer in PiP area only
+
+      // Set viewport and render PiP view
+      gl.setViewport(pipViewport.x, pipViewport.y, pipViewport.width, pipViewport.height);
       gl.render(scene, cockpitCam);
     }
 
-     gl.setScissorTest(false);
-     gl.autoClear = true;
-
-  }, 1); // Render priority 1 ensures it runs after scene updates
+    gl.setScissorTest(false);
+    gl.autoClear = true;
+  }, 1); // Priority 1 ensures rendering after scene updates
 
   return null;
 };
+
+
+
+
+
+
+
+
+
 
 
 /**
@@ -662,8 +742,16 @@ const RocketLandingScene = () => {
   const rocketBodyHeight = 8;
   const rocketBodyRadius = 0.5;
   const flameEmitterY = -rocketBodyHeight / 2; // Position flame below the body
-
-
+  const pipViewRef = useRef<HTMLDivElement>(null!);
+  const [pipCamera] = useState(() => {
+    const cam = new THREE.PerspectiveCamera(75, 1, 0.1, 100); // Initial aspect ratio (1), View/Updater will adjust
+    cam.name = COCKPIT_CAMERA_NAME; // Assign the name for the updater to find it
+    // Set initial position - will be controlled by CockpitCameraUpdater
+    cam.position.set(0, 5, 5);
+    // Optional: Set initial rotation/lookAt if needed before updater takes over
+    // cam.lookAt(0, 0, 0);
+    return cam;
+});
   
 
 
@@ -673,7 +761,17 @@ const RocketLandingScene = () => {
   // const [statusMessage, setStatusMessage] = useState<string>('');
 
   return (
-    <Canvas
+    
+
+
+
+
+
+
+
+
+
+<Canvas
       style={{ 
         position: 'fixed', // Position it relative to the viewport
         top: 0,
@@ -728,8 +826,8 @@ const RocketLandingScene = () => {
         shadow-camera-right={25}
         shadow-camera-top={25}
         shadow-camera-bottom={-25} // Deeper shadow area
-      />
-      <directionalLight position={[-5, -5, -5]} intensity={0.2} />
+        />
+              <directionalLight position={[-5, -5, -5]} intensity={0.2} />
 
       {/* Scene Content */}
       <Suspense fallback={null}>

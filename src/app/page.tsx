@@ -2,14 +2,19 @@
 
 import React, { Suspense, useRef, useEffect, useState, useLayoutEffect, useMemo } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, OrthographicCamera, Text, View, PerspectiveCamera } from '@react-three/drei';
+import { OrbitControls, OrthographicCamera, Text, View, PerspectiveCamera, useProgress  } from '@react-three/drei';
 import * as THREE from 'three';
 import AxesHelperComponent from './AxesHelperComponent';
-
+import { Physics, RigidBody, CuboidCollider } from '@react-three/rapier';
+import type { RapierRigidBody, CollisionPayload } from '@react-three/rapier'; // Import types
 
 import Flame from './FlameComponent'; // Import the Flame component
+ 
+ 
 
 
+import { useLoader } from '@react-three/fiber'
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js'
 
 // --- Constants ---
 // Scene
@@ -39,7 +44,6 @@ const CAPTURE_VERTICAL_TOLERANCE = 1.0; // Rocket center can be from -2.5 to -1.
 // Min/Max Y coordinates for the rocket's CENTER to be in the zone
 const CAPTURE_ZONE_MIN_Y =   -9.0  // CAPTURE_TARGET_Y - CAPTURE_VERTICAL_TOLERANCE;  -2.5
 const CAPTURE_ZONE_MAX_Y = -2.8 ; // -1.5
-console.log(CAPTURE_TARGET_Y,CAPTURE_ZONE_MIN_Y,CAPTURE_ZONE_MAX_Y  ,"CAPTURE_TARGET_Y...");
 
 
 
@@ -48,7 +52,7 @@ const REQUIRED_CAPTURE_TIME = 2.1; // Seconds required inside the zone
 
 
 // Rocket Physics & Control
-const ROCKET_START_Y = 1;
+const ROCKET_START_Y = 31;
 const ROCKET_START_XZ_RANGE = 8;
 const ROCKET_HEIGHT = 7.1;
 const ROCKET_WIDTH = 0.5;
@@ -68,14 +72,14 @@ const MAX_LANDING_SPEED_HORIZONTAL = 0.2; // Placeholder+
 
 // Vertical Physics (Y-Axis)
 const ROCKET_FALL_ACCELERATION = 0.5;
-const ROCKET_MAIN_THRUST = 1.0;
-const ROCKET_MAX_FALL_SPEED = 4.0;
-const ROCKET_MAX_RISE_SPEED = 2.5;
-const ROCKET_DRAG_VERTICAL = 0.15;
+const ROCKET_MAIN_THRUST = 0.9;
+ 
+ 
+const ROCKET_DRAG_VERTICAL = 0.05;
 
 // Horizontal Plane Physics (XZ-Axis)
 const ROCKET_MANEUVER_THRUST = 2.0;
-const ROCKET_MAX_XZ_SPEED = 1.8;
+ 
 const ROCKET_DRAG_XZ = 0.35;
 
 // Rocket Animation
@@ -99,6 +103,57 @@ const COCKPIT_CAMERA_NAME = "cockpitCamera";
 // Game States
 type GameState = 'playing' | 'landed' | 'crashed' | 'resetting';
 
+
+
+// Vertical Physics (Y-Axis) - Using FORCE now
+const EFFECTIVE_GRAVITY_MAGNITUDE = Math.abs(-9.81 * 0.8 * 1.5); // Calculated from worldGravity * gravityScale (approx 11.77)
+const THRUST_ACCELERATION_FACTOR = 0.6; // How much stronger than gravity is the thrust? (e.g., 1.0 = hover, 1.5 = 50% more force) - **TUNE THIS**
+const ROCKET_THRUST_FORCE = EFFECTIVE_GRAVITY_MAGNITUDE * THRUST_ACCELERATION_FACTOR; // Total upward force when thrusting
+// const ROCKET_FALL_ACCELERATION = 0.5; // Less relevant now, gravity handles fall
+// const ROCKET_MAIN_THRUST = 0.9; // REMOVE or repurpose this (old impulse value)
+const ROCKET_MAX_FALL_SPEED = 1.0; // Keep for clamping if desired
+const ROCKET_MAX_RISE_SPEED = 1.1; // Keep for clamping if desired
+const ROCKET_VERTICAL_DAMPING = 1.1; // Damping factor specifically for vertical - **TUNE THIS** (Value for RigidBody prop)
+
+// Horizontal Plane Physics (XZ-Axis) - Using FORCE now
+const ROCKET_MANEUVER_FORCE = 6.0; // Force applied for maneuvering - **TUNE THIS**
+// const ROCKET_MANEUVER_THRUST = 2.0; // REMOVE or repurpose (old impulse value)
+const ROCKET_MAX_XZ_SPEED = 2.0; // Keep for clamping if desired
+const ROCKET_XZ_DAMPING = 1.2; // Damping factor for horizontal - **TUNE THIS** (Value for RigidBody prop)
+
+// Combined Damping for RigidBody prop (Start with similar values, might need adjustment)
+const ROCKET_LINEAR_DAMPING = 51.0005; // **TUNE THIS** - Applies to X, Y, Z
+
+// Wind
+const WIND_FORCE_SCALE = 5.0; // Adjust scale for force application - **TUNE THIS**
+ 
+const THRUST_INCREMENT = 0.05; // How much additional thrust is added per second
+const MAX_THRUST_FACTOR = 1.1; // Maximum thrust can reach 150% of gravity
+const MIN_THRUST_FACTOR = THRUST_ACCELERATION_FACTOR; // Minimum is the base factor
+
+// In your FallingRocket component, add a ref to track current thrust level
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // Wind
 const WIND_MAX_STRENGTH = 0.001; // 0 orginal
 const getRandomWindVector = (): THREE.Vector3 => {
@@ -109,253 +164,230 @@ const getRandomWindVector = (): THREE.Vector3 => {
     return new THREE.Vector3(windX, 0, windZ);
 }
 
-// Camera Names
+ 
 
 // --- Components ---
 
 /**
- * Landing Floor Component
+ * Landing Floor Component (Physics Enabled)
  */
 const LandingFloor = () => {
+  // Collider dimensions are half-extents (width/2, height/2, depth/2)
+  const floorColliderArgs: [number, number, number] = [32, FLOOR_HEIGHT / 2, 32];
+
   return (
-    <mesh position={[0, PLATFORM_Y, 0]} receiveShadow name="floor">
-      <boxGeometry args={[64, FLOOR_HEIGHT, 64]} />
-      <meshStandardMaterial color="#613d36" metalness={4.8} roughness={2.3} />
-    </mesh>
+    // RigidBody is fixed, position matches the visual mesh center
+    <RigidBody type="fixed" position={[0, PLATFORM_Y, 0]} colliders={false} userData={{ type: 'floor' }}>
+      <CuboidCollider args={floorColliderArgs} />
+      <mesh receiveShadow name="floor">
+        {/* Geometry matches collider FULL size */}
+        <boxGeometry args={[64, FLOOR_HEIGHT, 64]} />
+        <meshStandardMaterial color="#613d36" metalness={4.8} roughness={2.3} />
+      </mesh>
+    </RigidBody>
   );
 };
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 /**
- * Landing Platform Component (Tall Tower Structure)
+ * Landing Platform Component (Tall Tower Structure - Physics Enabled)
  */
 const LandingPlatform = () => {
-    // Position the center of the tall platform mesh correctly
-    // Its center Y will be halfway between PLATFORM_Y and PLATFORM_TOP_Y
-    const platformCenterY = PLATFORM_Y + PLATFORM_HEIGHT / 2;
-    const platformPosition = new THREE.Vector3(PLATFORM_CENTER_X, platformCenterY, PLATFORM_CENTER_Z);
+  const platformCenterY = PLATFORM_Y + PLATFORM_HEIGHT / 2;
+  const platformPosition: [number, number, number] = [PLATFORM_CENTER_X, platformCenterY, PLATFORM_CENTER_Z];
+  // Collider dimensions are half-extents
+  const platformColliderArgs: [number, number, number] = [PLATFORM_WIDTH / 2, PLATFORM_HEIGHT / 2, PLATFORM_DEPTH / 2];
 
-    return (
+  return (
+    <RigidBody
+      type="fixed"
+      position={platformPosition}
+      colliders={false} // We define our own collider
+      userData={{ type: 'platform_tower' }} // Identify this body
+    >
+      {/* Define the physical shape */}
+      <CuboidCollider args={platformColliderArgs} />
+
+      {/* The visual mesh - its position is handled by the RigidBody */}
       <mesh
-        position={platformPosition}
         receiveShadow
         name="platform"
+        // UserData on mesh is less critical now, but can keep for other logic
         userData={{
             isLandingPlatform: true,
             width: PLATFORM_WIDTH,
             depth: PLATFORM_DEPTH,
-            height: PLATFORM_HEIGHT, // Store height
-            topY: PLATFORM_TOP_Y, // Store calculated top Y (-2.0)
+            height: PLATFORM_HEIGHT,
+            topY: PLATFORM_TOP_Y,
             minX: PLATFORM_CENTER_X - PLATFORM_WIDTH / 2,
             maxX: PLATFORM_CENTER_X + PLATFORM_WIDTH / 2,
             minZ: PLATFORM_CENTER_Z - PLATFORM_DEPTH / 2,
             maxZ: PLATFORM_CENTER_Z + PLATFORM_DEPTH / 2,
         }}
       >
-        {/* Geometry uses full height */}
         <boxGeometry args={[PLATFORM_WIDTH, PLATFORM_HEIGHT, PLATFORM_DEPTH]} />
         <meshStandardMaterial color="darkblue" metalness={0.8} roughness={1.0}/>
       </mesh>
-    );
-  };
+    </RigidBody>
+  );
+};
 
 
 
 
+// --- PlatformArm1 ---
+// --- PlatformArm1 (Refactored) ---
+const PlatformArm1 = ({
+  isDeployingArms = false,
+  // Pass rotation values, ensure parent component memoizes if needed
+  initialRotation = { x: 0, y: Math.PI / -12, z: 0 },
+  deployedRotation = { x: 0, y: 0, z: Math.PI / 3 }
+}) => {
+  const armApi = useRef<RapierRigidBody>(null!);
+  const meshRef = useRef<THREE.Mesh>(null!);
 
-  const PlatformArm1 = ({ 
-    isDeployingArms = false,
-    initialRotation = { x: 0, y: Math.PI / -12, z: 0 }, // Default 30 degrees open in Z axis
-    deployedRotation = { x: 0, y: 0, z: Math.PI / 3 }  // 60 degrees when deployed
-  }) => {
-    // Create a ref to access the mesh
-    const meshRef = useRef();
-    
-    // Track the target rotation - where the arm should rotate to
-    const [targetRotation, setTargetRotation] = useState({
-      x: initialRotation.x,
-      y: initialRotation.y,
-      z: initialRotation.z
-    });
-    
-    // Position the center of the tall platform mesh correctly
-    const platformCenterY = PLATFORM_Y + PLATFORM_HEIGHT / 2;
-    const platformPosition = new THREE.Vector3(PLATFORM_CENTER_X-2, -3, PLATFORM_CENTER_Z-0.9);
-    
-    // Set initial rotation when component mounts
-    useEffect(() => {
-      if (meshRef.current) {
-        meshRef.current.rotation.x = initialRotation.x;
-        meshRef.current.rotation.y = initialRotation.y;
-        meshRef.current.rotation.z = initialRotation.z;
-      }
-    }, []); // Keep this as empty array since it's only for initialization
-    
-    // Update target rotation when rocket approaches - fixed with deep comparison
-    useEffect(() => {
-      // Determine which rotation to use based on isDeployingArms
-      const newTarget = isDeployingArms ? deployedRotation : initialRotation;
-      
-      // Only update state if values are actually different - prevents infinite loops
-      setTargetRotation(prevRotation => {
-        if (
-          prevRotation.x !== newTarget.x ||
-          prevRotation.y !== newTarget.y ||
-          prevRotation.z !== newTarget.z
-        ) {
-          return { ...newTarget }; // Create a new object reference
-        }
-        return prevRotation; // Return the previous state to avoid re-render
-      });
-    }, [isDeployingArms]); // Only depend on the boolean flag, not the object references
-    
-    
-    // Use the useFrame hook to smoothly animate to the target rotation
-    useFrame((state, delta) => {
-      if (meshRef.current) {
-        // Smoothly interpolate current rotation toward target rotation for each axis
-        meshRef.current.rotation.x = THREE.MathUtils.lerp(
-          meshRef.current.rotation.x,
-          targetRotation.x,
-          delta * 2.0
-        );
-        
-        meshRef.current.rotation.y = THREE.MathUtils.lerp(
-          meshRef.current.rotation.y,
-          targetRotation.y,
-          delta * 2.0
-        );
-        
-        meshRef.current.rotation.z = THREE.MathUtils.lerp(
-          meshRef.current.rotation.z,
-          targetRotation.z,
-          delta * 2.0
-        );
-      }
-    });
-    
-    return (
+  const armSize: [number, number, number] = [3, 0.4, 0.2];
+  const armColliderArgs: [number, number, number] = [armSize[0] / 2, armSize[1] / 2, armSize[2] / 2];
+  const platformPosition: [number, number, number] = [PLATFORM_CENTER_X - 2, -3, PLATFORM_CENTER_Z - 0.9];
+
+  // Memoize the Euler objects if props might change identity but not value
+  // Note: If the parent guarantees stable object refs (e.g., via useMemo/useState),
+  // this internal useMemo might be slightly redundant but adds safety.
+  const targetInitialEuler = useMemo(() => new THREE.Euler(initialRotation.x, initialRotation.y, initialRotation.z, 'XYZ'), [initialRotation]);
+  const targetDeployedEuler = useMemo(() => new THREE.Euler(deployedRotation.x, deployedRotation.y, deployedRotation.z, 'XYZ'), [deployedRotation]);
+
+  useFrame((state, delta) => {
+    if (armApi.current) {
+      // Determine the target Euler DIRECTLY based on the prop
+      const targetEuler = isDeployingArms ? targetDeployedEuler : targetInitialEuler;
+
+      // Convert target Euler to Quaternion
+      const targetQuat = new THREE.Quaternion().setFromEuler(targetEuler);
+
+      // Get current physics rotation
+      const currentQuat = armApi.current.rotation();
+
+      // Interpolate using Slerp
+      const step = delta * 4.0; // Adjust interpolation speed
+      const interpolatedQuat = new THREE.Quaternion()
+        .copy(currentQuat)
+        .slerp(targetQuat, step);
+
+      // Set the NEXT kinematic rotation
+      armApi.current.setNextKinematicRotation(interpolatedQuat);
+    }
+  });
+
+  // Set the initial physics rotation ONLY ONCE when the RigidBody mounts
+  // Note: The 'rotation' prop on RigidBody handles the initial setting.
+  const initialEulerForRigidBody = useMemo(() => new THREE.Euler(initialRotation.x, initialRotation.y, initialRotation.z, 'XYZ'), [initialRotation]);
+
+
+  return (
+    <RigidBody
+      ref={armApi}
+      type="kinematicPosition"
+      position={platformPosition}
+      rotation={initialEulerForRigidBody} // Use the memoized initial Euler here
+      colliders={false}
+      userData={{ type: 'arm', id: 'arm1' }}
+    >
+      <CuboidCollider args={armColliderArgs} />
       <mesh
         ref={meshRef}
-        position={platformPosition}
         receiveShadow
-        name="platform"
-        userData={{
-          isLandingPlatform: true,
-          width: PLATFORM_WIDTH,
-          depth: PLATFORM_DEPTH,
-          height: PLATFORM_HEIGHT,
-          topY: PLATFORM_TOP_Y,
-          minX: PLATFORM_CENTER_X - PLATFORM_WIDTH / 2,
-          maxX: PLATFORM_CENTER_X + PLATFORM_WIDTH / 2,
-          minZ: PLATFORM_CENTER_Z - PLATFORM_DEPTH / 2,
-          maxZ: PLATFORM_CENTER_Z + PLATFORM_DEPTH / 2,
-        }}
+        name="platformArm1"
       >
-        <boxGeometry args={[3, 0.4, 0.2]} />
+        <boxGeometry args={armSize} />
         <meshStandardMaterial color="darkblue" metalness={0.8} roughness={0.3}/>
       </mesh>
-    );
-  };
+    </RigidBody>
+  );
+};
+
+// Apply the EXACT SAME refactoring logic to PlatformArm2
+// --- PlatformArm1 (Refactored) ---
+const PlatformArm2 = ({
+  isDeployingArms = false,
+  // Pass rotation values, ensure parent component memoizes if needed
+  initialRotation = { x: 0, y: Math.PI / 12, z: 0 },
+  deployedRotation = { x: 0, y: 0, z: Math.PI / 3 }
+}) => {
+  const armApi = useRef<RapierRigidBody>(null!);
+  const meshRef = useRef<THREE.Mesh>(null!);
+
+  const armSize: [number, number, number] = [3, 0.4, 0.2];
+  const armColliderArgs: [number, number, number] = [armSize[0] / 2, armSize[1] / 2, armSize[2] / 2];
+  const platformPosition: [number, number, number] = [PLATFORM_CENTER_X - 2, -3, PLATFORM_CENTER_Z + 0.9];
+
+  // Memoize the Euler objects if props might change identity but not value
+  // Note: If the parent guarantees stable object refs (e.g., via useMemo/useState),
+  // this internal useMemo might be slightly redundant but adds safety.
+  const targetInitialEuler = useMemo(() => new THREE.Euler(initialRotation.x, initialRotation.y, initialRotation.z, 'XYZ'), [initialRotation]);
+  const targetDeployedEuler = useMemo(() => new THREE.Euler(deployedRotation.x, deployedRotation.y, deployedRotation.z, 'XYZ'), [deployedRotation]);
+
+  useFrame((state, delta) => {
+    if (armApi.current) {
+      // Determine the target Euler DIRECTLY based on the prop
+      const targetEuler = isDeployingArms ? targetDeployedEuler : targetInitialEuler;
+
+      // Convert target Euler to Quaternion
+      const targetQuat = new THREE.Quaternion().setFromEuler(targetEuler);
+
+      // Get current physics rotation
+      const currentQuat = armApi.current.rotation();
+
+      // Interpolate using Slerp
+      const step = delta * 4.0; // Adjust interpolation speed
+      const interpolatedQuat = new THREE.Quaternion()
+        .copy(currentQuat)
+        .slerp(targetQuat, step);
+
+      // Set the NEXT kinematic rotation
+      armApi.current.setNextKinematicRotation(interpolatedQuat);
+    }
+  });
+
+  // Set the initial physics rotation ONLY ONCE when the RigidBody mounts
+  // Note: The 'rotation' prop on RigidBody handles the initial setting.
+  const initialEulerForRigidBody = useMemo(() => new THREE.Euler(initialRotation.x, initialRotation.y, initialRotation.z, 'XYZ'), [initialRotation]);
 
 
-
-
-  
-  const PlatformArm2 = ({ 
-      
-    isDeployingArms = false,
-    initialRotation = { x: 0, y: Math.PI / 12, z: 0 }, // Default 30 degrees open in Z axis
-    deployedRotation = { x: 0, y: 0, z: Math.PI / 3 }  // 60 degrees when deployed
-  }) => {
-    // Create a ref to access the mesh
-    const meshRef = useRef();
-    
-    // Track the target rotation - where the arm should rotate to
-    const [targetRotation, setTargetRotation] = useState({
-      x: initialRotation.x,
-      y: initialRotation.y,
-      z: initialRotation.z
-    });
-    
-    // Position the center of the tall platform mesh correctly
-    const platformCenterY = PLATFORM_Y + PLATFORM_HEIGHT / 2;
-    const platformPosition = new THREE.Vector3(PLATFORM_CENTER_X-2, -3, PLATFORM_CENTER_Z+0.9);
-    
-    // Set initial rotation when component mounts
-    useEffect(() => {
-      if (meshRef.current) {
-        meshRef.current.rotation.x = initialRotation.x;
-        meshRef.current.rotation.y = initialRotation.y;
-        meshRef.current.rotation.z = initialRotation.z;
-      }
-    }, []); // Keep this as empty array since it's only for initialization
-    
-    // Update target rotation when rocket approaches - fixed with deep comparison
-    useEffect(() => {
-      // Determine which rotation to use based on isDeployingArms
-      const newTarget = isDeployingArms ? deployedRotation : initialRotation;
-      
-      // Only update state if values are actually different - prevents infinite loops
-      setTargetRotation(prevRotation => {
-        if (
-          prevRotation.x !== newTarget.x ||
-          prevRotation.y !== newTarget.y ||
-          prevRotation.z !== newTarget.z
-        ) {
-          return { ...newTarget }; // Create a new object reference
-        }
-        return prevRotation; // Return the previous state to avoid re-render
-      });
-    }, [isDeployingArms]); // Only depend on the boolean flag, not the object references
-    
-    
-    // Use the useFrame hook to smoothly animate to the target rotation
-    useFrame((state, delta) => {
-      if (meshRef.current) {
-        // Smoothly interpolate current rotation toward target rotation for each axis
-        meshRef.current.rotation.x = THREE.MathUtils.lerp(
-          meshRef.current.rotation.x,
-          targetRotation.x,
-          delta * 2.0
-        );
-        
-        meshRef.current.rotation.y = THREE.MathUtils.lerp(
-          meshRef.current.rotation.y,
-          targetRotation.y,
-          delta * 2.0
-        );
-        
-        meshRef.current.rotation.z = THREE.MathUtils.lerp(
-          meshRef.current.rotation.z,
-          targetRotation.z,
-          delta * 2.0
-        );
-      }
-    });
-    
-    return (
+  return (
+    <RigidBody
+      ref={armApi}
+      type="kinematicPosition"
+      position={platformPosition}
+      rotation={initialEulerForRigidBody} // Use the memoized initial Euler here
+      colliders={false}
+      userData={{ type: 'arm', id: 'arm1' }}
+    >
+      <CuboidCollider args={armColliderArgs} />
       <mesh
         ref={meshRef}
-        position={platformPosition}
         receiveShadow
-        name="platform"
-        userData={{
-          isLandingPlatform: true,
-          width: PLATFORM_WIDTH,
-          depth: PLATFORM_DEPTH,
-          height: PLATFORM_HEIGHT,
-          topY: PLATFORM_TOP_Y,
-          minX: PLATFORM_CENTER_X - PLATFORM_WIDTH / 2,
-          maxX: PLATFORM_CENTER_X + PLATFORM_WIDTH / 2,
-          minZ: PLATFORM_CENTER_Z - PLATFORM_DEPTH / 2,
-          maxZ: PLATFORM_CENTER_Z + PLATFORM_DEPTH / 2,
-        }}
+        name="platformArm1"
       >
-        <boxGeometry args={[3, 0.4, 0.2]} />
+        <boxGeometry args={armSize} />
         <meshStandardMaterial color="darkblue" metalness={0.8} roughness={0.3}/>
       </mesh>
-    );
-  };
+    </RigidBody>
+  );
+};
+
+// Apply the EXACT SAME refactoring logic to PlatformArm2
 
 
 
@@ -516,8 +548,8 @@ const getRandomStartPosition = (): THREE.Vector3 => {
     const range = ROCKET_START_XZ_RANGE;
     const randomX = Math.random() * range * 2 - range;
     const randomZ = Math.random() * range * 2 - range;
-    // return new THREE.Vector3(randomX, ROCKET_START_Y, randomZ); original
-    return new THREE.Vector3(-2, 2, 1); // set to easy to start to debug
+     return new THREE.Vector3(randomX, ROCKET_START_Y, randomZ);  
+   // return new THREE.Vector3(-2, 12, 1); // set to easy to start to debug
 
 };
 
@@ -541,74 +573,269 @@ const getRandomStartPosition = (): THREE.Vector3 => {
 
 
 
-/**
- * Player Controlled Rocket Component
- */
+
+
+
+
+function Loaderr() {
+  const { progress } = useProgress();
+  return <Text>{`Loading Model: ${progress.toFixed(0)}%`}</Text>; // Basic text loader
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const FallingRocket = ({ rocketName }: { rocketName: string }) => {
-  const rocketRef = useRef<THREE.Mesh>(null!);
-  const velocity = useRef(new THREE.Vector3(0, 0, 0));
+  // --- Refs ---
+  const rocketApi = useRef<RapierRigidBody>(null!); // Ref for Rapier API
+  const rocketRef = useRef<THREE.Mesh>(null!); // Ref for visual mesh (for tilt)
+  // Remove the old velocity ref: const velocity = useRef(new THREE.Vector3(0, 0, 0));
   const keysPressed = useRef(new Set<string>());
-  const flameRef = useRef<THREE.Object3D>(null!); // <-- REF FOR THE FLAME OBJECT
+  const flameRef = useRef<THREE.Object3D>(null!);
   const windVector = useRef<THREE.Vector3>(getRandomWindVector());
   const flameOpacityRef = useRef(0);
-
-
-
+  const timeInCaptureZoneRef = useRef<number>(0);
+  const gameStateRef = useRef<GameState>('playing'); // Ref to hold current game state for callbacks
 
   // --- State ---
-  const [initialPosition, setInitialPosition] = useState<THREE.Vector3>(getRandomStartPosition);
-  const [gameState, setGameState] = useState<GameState>('playing');
+  const [initialPosition] = useState<THREE.Vector3>(getRandomStartPosition); // Keep initial position state
+  const [gameState, _setGameState] = useState<GameState>('playing');
   const [statusMessage, setStatusMessage] = useState<string>('');
+ 
 
-
-  const timeInCaptureZoneRef = useRef<number>(0);
-
-
-    // ROCKET_BASE_OFFSET is already defined as ROCKET_HEIGHT / 2
+  const thrustFactorRef = useRef(THRUST_ACCELERATION_FACTOR);
 
 
 
-  // --- Reset Game Function ---
-  const resetGame = () => {
-    setGameState('resetting'); // Intermediate state to prevent updates during reset
-    const newStartPosition = getRandomStartPosition();
-    const newWind = getRandomWindVector();
 
 
-    // Reset capture timer on game reset
-    timeInCaptureZoneRef.current = 0;
+ 
 
 
 
+  const rocketColliderArgs: [number, number, number] = [
+      ROCKET_WIDTH / 2,
+      ROCKET_HEIGHT / 2,
+      ROCKET_WIDTH / 2
+  ];
+
+  // --- Calculate Box Geometry Args for the VISUAL bounding box ---
+  // BoxGeometry takes FULL dimensions (width, height, depth)
+  const visualBoundingBoxArgs = useMemo<[number, number, number]>(() => [
+      rocketColliderArgs[0] * 2, // Full width = half-width * 2
+      rocketColliderArgs[1] * 2 , // Full height = half-height * 2
+      rocketColliderArgs[2] * 2, // Full depth = half-depth * 2
+  ], [rocketColliderArgs]); // Recalculate if collider args change (they don't here, but good practice)
+
+
+
+
+
+
+
+
+  useEffect(() => {
+    // Initialize flame properties on mount
+    flameOpacityRef.current = 0;
     if (flameRef.current) {
-      flameRef.current.visible = false;
+        flameRef.current.visible = false;
+    }
+}, []);
+
+
+  
+  // --- Game State Setter ---
+  // Function to update both state and ref simultaneously
+  const setGameState = (newState: GameState) => {
+    gameStateRef.current = newState;
+    _setGameState(newState);
+  };
+  // --- Rocket Visuals ---
+  const rocketColor = gameState === 'landed' ? 'lime' : gameState === 'crashed' ? 'red' : '#ADD8E6';
+  const rocketEmissive = gameState === 'landed' ? 'green' : gameState === 'crashed' ? 'darkred' : '#4682B4';
+
+  const obj = useLoader(OBJLoader, '/booster_obj_1.obj'); // Or '/models/rocket.obj' etc.
+
+
+  // Create a memoized material instance
+  const rocketMaterial = useMemo(() => new THREE.MeshStandardMaterial({
+    metalness: 0.6,
+    roughness: 0.4,
+    // side: THREE.DoubleSide // Optional: If some faces are invisible
+}), []);
+
+// Effect to apply material and shadows dynamically to all meshes in the loaded OBJ
+useEffect(() => {
+    if (!obj) return;
+
+    // Update material properties based on game state
+    rocketMaterial.color.set(rocketColor);
+    rocketMaterial.emissive.set(rocketEmissive);
+
+    obj.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+            child.castShadow = true;
+            child.receiveShadow = false; // Usually false for the rocket itself
+            // *** IMPORTANT: Decide if you want to OVERWRITE existing materials ***
+            // If your OBJ/MTL has materials you like, you might comment this out
+            // or selectively apply based on child.material.name
+            child.material = rocketMaterial;
+        }
+    });
+}, [obj, rocketColor, rocketEmissive, rocketMaterial]); // Re-run if these change
+
+
+
+  // --- Calculate Scale (Crucial Step!) ---
+  // You MUST adjust the scale to match your physics collider size (ROCKET_HEIGHT, ROCKET_WIDTH)
+// Inside FallingRocket component
+
+const modelScale = useMemo(() => {
+  // *** ADD THIS CHECK ***
+  if (!obj) {
+    console.warn("Attempted to calculate scale before model loaded or loader failed.");
+    // Return a default scale to prevent crashing, though ideally Suspense prevents this state.
+    return new THREE.Vector3(0.001, 0.001, 0.001);
+  }
+  // *********************
+
+  // 1. Measure your model
+  const modelBoundingBox = new THREE.Box3().setFromObject(obj); // This line should now be safe
+  const modelSize = new THREE.Vector3();
+  modelBoundingBox.getSize(modelSize);
+ 
+
+  // Ensure modelSize components are not zero to avoid division by zero
+  if (modelSize.x === 0 || modelSize.y === 0 || modelSize.z === 0) {
+      console.error("Model has zero dimensions, cannot calculate scale automatically. Check export/model.", modelSize);
+      return new THREE.Vector3(1, 1, 1); // Default scale
   }
 
 
+  const scaleY = ROCKET_HEIGHT / modelSize.y;
+  return new THREE.Vector3(scaleY, scaleY, scaleY);
 
-    // Use setTimeout to ensure state update propagates before resetting physics
-    setTimeout(() => {
-      if (rocketRef.current) {
-        rocketRef.current.position.copy(newStartPosition);
-        rocketRef.current.rotation.set(0, 0, 0);
-      }
-      velocity.current.set(0, 0, 0);
-      windVector.current.copy(newWind);
-      keysPressed.current.clear(); // Clear any stuck keys
-      setInitialPosition(newStartPosition); // Update state if needed elsewhere
-      setStatusMessage('');
-      setGameState('playing');
-      console.log("Game reset complete. New Wind:", newWind);
-    }, 10); // Short delay
+}, [obj]); // Dependency array remains the same
+
+
+
+  const handleCollision = (event: CollisionPayload) => {
+    // Only process collisions if playing or resetting (to allow snapping)
+    if (gameStateRef.current !== 'playing' && gameStateRef.current !== 'resetting') {
+         // If landed, ignore further collisions
+         if(gameStateRef.current === 'landed') return;
+         // If crashed, maybe ignore specific collisions if needed
+         // return;
+    }
+
+    const otherUserData = event.other.collider.userData as { type?: string }; // More specific typing
+
+
+
+    // Check if collided with floor, platform tower, or arms
+    if (otherUserData?.type === 'floor' || otherUserData?.type === 'platform_tower' || otherUserData?.type === 'arm') {
+        // Prevent switching from landed to crashed
+        if (gameStateRef.current !== 'landed') {
+            setGameState('crashed');
+            setStatusMessage(`CRASHED on ${otherUserData.type}! Press R.`);
+            // Physics engine handles stopping/resting, no need to snap manually here usually.
+            // We can explicitly zero velocity if we want an immediate stop on crash.
+             if (rocketApi.current) {
+                 rocketApi.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+                 rocketApi.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
+             }
+        }
+    }
+     // Add more specific collision logic if needed (e.g., different sounds/effects)
   };
+
+
+
+  const resetGame = () => {
+    setGameState('resetting');
+    const newStartPosition = getRandomStartPosition();
+    const newWind = getRandomWindVector();
+    timeInCaptureZoneRef.current = 0;
+    if (flameRef.current) flameRef.current.visible = false;
+    flameOpacityRef.current = 0;
+    setStatusMessage('');
+
+    if (rocketApi.current) {
+        console.log("Resetting physics body...");
+        // Teleport the rigid body to the start position
+        rocketApi.current.setTranslation(newStartPosition, true);
+        // Reset rotation
+        rocketApi.current.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
+        // Reset velocities
+        rocketApi.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+        rocketApi.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
+        // Ensure it's dynamic if it was changed
+        // rocketApi.current.raw().setBodyType(RapierPhysics.RigidBodyType.Dynamic); // Need import if using this
+    } else {
+        console.warn("Rocket API not available during reset attempt.");
+    }
+
+    // Reset keys and wind *after* physics reset
+    keysPressed.current.clear();
+    windVector.current.copy(newWind);
+
+    // Short delay before setting state back to playing allows physics state to settle
+    setTimeout(() => {
+      setGameState('playing');
+      console.log("Game reset complete.");
+    }, 50); // Increased delay slightly
+  };
+
+
+
+
+  // Effect to apply material and shadows dynamically to all meshes in the loaded OBJ
+  useEffect(() => {
+    
+    if (!obj) return;
+
+    // Update material properties based on game state
+    rocketMaterial.color.set(rocketColor);
+    rocketMaterial.emissive.set(rocketEmissive);
+
+    obj.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+            child.castShadow = true;
+            child.receiveShadow = false; // Usually false for the rocket itself
+            // *** IMPORTANT: Decide if you want to OVERWRITE existing materials ***
+            // If your OBJ/MTL has materials you like, you might comment this out
+            // or selectively apply based on child.material.name
+            child.material = rocketMaterial;
+        }
+    });
+}, [obj, rocketColor, rocketEmissive, rocketMaterial]); // Re-run if these change
 
 
   // --- Create the Cockpit Camera ---
   const [cockpitCamera] = useState(() => {
-    const cam = new THREE.PerspectiveCamera(75, 1, 0.1, 100);
+    const cam = new THREE.PerspectiveCamera(45, 1, 0.1, 20000);
     cam.name = COCKPIT_CAMERA_NAME;
-    cam.position.set(0, ROCKET_CENTER_TO_TOP - 0.5, 0); // Position inside, near the top, looking forward
-    cam.rotation.set(THREE.MathUtils.degToRad(-1), THREE.MathUtils.degToRad(-91), 0); // Slight downward tilt
+    cam.position.set(0, ROCKET_CENTER_TO_TOP - 131.5, 0); // Position inside, near the top, looking forward
+    cam.rotation.set(THREE.MathUtils.degToRad(0), THREE.MathUtils.degToRad( 0), THREE.MathUtils.degToRad(0)); // Slight downward tilt
     return cam;
   });
 
@@ -622,296 +849,278 @@ const FallingRocket = ({ rocketName }: { rocketName: string }) => {
     };
   }, [cockpitCamera]); 
 
-  // --- Keyboard Event Handling ---
+
+
+
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() === RESET_KEY && gameState !== 'playing') {
-        resetGame();
-        return;
-      }
-      if (gameState === 'playing') {
-           keysPressed.current.add(event.key);
+      // Prevent holding down key from firing continuously if not desired
+      // (Set handles uniqueness automatically)
+        
+       keysPressed.current.add(event.key);
+
+      // Handle Reset Key directly here
+      if (event.key.toLowerCase() === RESET_KEY && gameStateRef.current !== 'resetting') {
+           resetGame();
       }
     };
+
     const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key === THRUST_KEY) { // Check specifically for space
+        console.log("Spacebar UP detected");
+    }
       keysPressed.current.delete(event.key);
     };
 
+    // Add listeners
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
- 
-    if (flameRef.current) {
-      flameRef.current.visible = false; // Start with flame off
- }
+
+    // Cleanup listeners on component unmount
     return () => {
+      console.log("Removing key listeners");
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      keysPressed.current.clear(); // Clear keys on unmount/cleanup
     };
-  }, [gameState, resetGame]);
+  }, [resetGame]);
 
 
 
 
 
 
+  const wasThrustingRef = useRef(false);
 
-
-
-  // --- Frame Update Logic (Physics, Collision, Animation) ---
   useFrame((state, delta) => {
-    if (!rocketRef.current || gameState === 'resetting') return;
+    if (!rocketApi.current || !rocketRef.current || gameStateRef.current === 'resetting') return;
 
-    const dt = Math.min(delta, 0.05);
-    const rocket = rocketRef.current;
-    const currentPosition = rocket.position;
-    const currentVelocity = velocity.current;
-    const currentRotation = rocket.rotation;
-
-
-    const isThrusting = keysPressed.current.has(THRUST_KEY) && gameState === 'playing';
- 
-
-
+    const dt = Math.min(delta, 0.05); // Clamp delta time
+    const isPlaying = gameStateRef.current === 'playing';
+    const isThrusting = isPlaying && keysPressed.current.has(THRUST_KEY);
+  
+    // --- Handle Flame Visibility ---
+    const fadeSpeed = 3.0;
+    if (isThrusting) {
+      flameOpacityRef.current = 1;
+    } else {
+      flameOpacityRef.current = Math.max(0, flameOpacityRef.current - dt * fadeSpeed);
+    }
     if (flameRef.current) {
-      flameRef.current.visible = isThrusting;
-      // Optional: You could also adjust flame intensity/size here
-      // e.g., flameRef.current.scale.set(1, isCurrentlyThrusting ? 1 : 0.5, 1);
+      flameRef.current.visible = flameOpacityRef.current > 0.01;
+    }
+  
+    // --- Apply Forces if Playing ---
+    if (isPlaying) {
+      const body = rocketApi.current;
+      const force = { x: 0, y: 0, z: 0 }; // Use force vector
+  
+      // Apply Thrust Force
+      if (isThrusting) {
+        force.y += ROCKET_THRUST_FORCE; // Apply thrust force
+      } else {
+        // Apply gravity when not thrusting
+        force.y -= EFFECTIVE_GRAVITY_MAGNITUDE;
+      }
+  
+      // Maneuvering Forces
+      let maneuverForceX = 0;
+      let maneuverForceZ = 0;
+      if (keysPressed.current.has(LEFT_KEY)) maneuverForceX -= ROCKET_MANEUVER_FORCE;
+      if (keysPressed.current.has(RIGHT_KEY)) maneuverForceX += ROCKET_MANEUVER_FORCE;
+      if (keysPressed.current.has(UP_KEY)) maneuverForceZ -= ROCKET_MANEUVER_FORCE;
+      if (keysPressed.current.has(DOWN_KEY)) maneuverForceZ += ROCKET_MANEUVER_FORCE;
+      force.x += maneuverForceX;
+      force.z += maneuverForceZ;
+  
+      // Wind Force
+      force.x += windVector.current.x * WIND_FORCE_SCALE;
+      force.z += windVector.current.z * WIND_FORCE_SCALE;
+  
+      // Apply ALL calculated forces to the Physics Body
+      body.addForce(force, true);
+  
+      // --- Handle Visual Tilt Animation (Separate from Physics Rotation) ---
+      const rocketMesh = rocketRef.current;
+      let targetRotationZ = 0;
+      if (keysPressed.current.has(LEFT_KEY)) targetRotationZ = ROCKET_TILT_ANGLE_Z;
+      else if (keysPressed.current.has(RIGHT_KEY)) targetRotationZ = -ROCKET_TILT_ANGLE_Z;
+  
+      let targetRotationX = 0;
+      if (keysPressed.current.has(UP_KEY)) targetRotationX = -ROCKET_TILT_ANGLE_X;
+      else if (keysPressed.current.has(DOWN_KEY)) targetRotationX = ROCKET_TILT_ANGLE_X;
+  
+      const tiltLerpFactor = dt * ROCKET_ROTATION_SPEED * 5;
+      rocketMesh.rotation.x = THREE.MathUtils.lerp(rocketMesh.rotation.x, targetRotationX, tiltLerpFactor);
+      rocketMesh.rotation.z = THREE.MathUtils.lerp(rocketMesh.rotation.z, targetRotationZ, tiltLerpFactor);
+  
+
+
+    // ----- REMOVED VELOCITY CLAMPING BLOCK -----
+    /*
+    // --- Clamp Velocity (Optional Safeguard) --- REMOVED ---
+    const linVel = body.linvel();
+    const clampedVelY = THREE.MathUtils.clamp(linVel.y, -ROCKET_MAX_FALL_SPEED, ROCKET_MAX_RISE_SPEED);
+    const clampedVelX = THREE.MathUtils.clamp(linVel.x, -ROCKET_MAX_XZ_SPEED, ROCKET_MAX_XZ_SPEED);
+    const clampedVelZ = THREE.MathUtils.clamp(linVel.z, -ROCKET_MAX_XZ_SPEED, ROCKET_MAX_XZ_SPEED);
+
+    if(Math.abs(linVel.y - clampedVelY) > 0.01 || Math.abs(linVel.x - clampedVelX) > 0.01 || Math.abs(linVel.z - clampedVelZ) > 0.01) {
+         body.setLinvel({ x: clampedVelX, y: clampedVelY, z: clampedVelZ }, true);
+    }
+    */
+    // ----- END REMOVED BLOCK -----
+
+
+    // --- Capture Zone Logic (Should work similarly) ---
+    // This part remains the same
+    const currentPosition = body.translation(); // Get position from physics
+    let isInCaptureZone = false;
+    const isInVerticalZone = currentPosition.y >= CAPTURE_ZONE_MIN_Y && currentPosition.y <= CAPTURE_ZONE_MAX_Y;
+
+    if (isInVerticalZone) {
+      const isInHorizontalZoneX = Math.abs(currentPosition.x - (PLATFORM_CENTER_X - 1)) <= CAPTURE_ZONE_WIDTH / 2;
+      const isInHorizontalZoneZ = Math.abs(currentPosition.z - PLATFORM_CENTER_Z) <= CAPTURE_ZONE_DEPTH / 2;
+      // TODO: Add speed/tilt checks using physics body data (linvel, angvel, rotation)
+      const currentLinVel = body.linvel(); // Re-fetch if needed after clamping - Now safe to fetch here
+      // const verticalSpeedOK = Math.abs(currentLinVel.y) <= MAX_LANDING_SPEED_VERTICAL;
+      // const horizontalSpeedOK = Math.sqrt(currentLinVel.x**2 + currentLinVel.z**2) <= MAX_LANDING_SPEED_HORIZONTAL;
+      // Check tilt using body.rotation() quaternion
+
+      const conditionsMet = isInHorizontalZoneX && isInHorizontalZoneZ; // Add other conditions here
+
+      if (conditionsMet) {
+          isInCaptureZone = true;
+          timeInCaptureZoneRef.current += dt;
+          setStatusMessage(`In capture zone... ${timeInCaptureZoneRef.current.toFixed(1)} / ${REQUIRED_CAPTURE_TIME.toFixed(1)}s`);
+
+          if (timeInCaptureZoneRef.current >= REQUIRED_CAPTURE_TIME) {
+              console.log("SUCCESSFUL CAPTURE");
+              setGameState('landed');
+              setStatusMessage(`Captured! Press R.`);
+              // Snap physics body (setLinvel is OK here for an instantaneous stop)
+              body.setTranslation({ x: PLATFORM_CENTER_X - 1, y: CAPTURE_TARGET_Y - 3.8, z: PLATFORM_CENTER_Z }, true);
+              body.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
+              body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+              body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+              // Optionally change body type to kinematic/fixed
+          }
+      }
   }
 
+  if (!isInCaptureZone) {
+      if (timeInCaptureZoneRef.current > 0) setStatusMessage(''); // Clear timer message
+      timeInCaptureZoneRef.current = 0;
+  }
 
-
-    // Only update physics and rotation if playing
-    if (gameState === 'playing') {
-
-
-      if (isThrusting) {
-        flameOpacityRef.current = 1; // Fully visible when thrusting
-    } else {
-        const fadeSpeed = 2.0; // Fades out over 0.5 seconds (1 / 2.0 = 0.5s)
-        flameOpacityRef.current = Math.max(0, flameOpacityRef.current - dt * fadeSpeed);
-    }
-
-    // Control flame visibility
-    if (flameRef.current) {
-        flameRef.current.visible = flameOpacityRef.current > 0;
-    }
-
-        // --- 1. Determine Forces/Acceleration ---
-        let inputAccelerationX = 0;
-        let inputAccelerationZ = 0;
-        if (keysPressed.current.has(LEFT_KEY))  inputAccelerationX -= ROCKET_MANEUVER_THRUST;
-        if (keysPressed.current.has(RIGHT_KEY)) inputAccelerationX += ROCKET_MANEUVER_THRUST;
-        if (keysPressed.current.has(UP_KEY))    inputAccelerationZ -= ROCKET_MANEUVER_THRUST;
-        if (keysPressed.current.has(DOWN_KEY))  inputAccelerationZ += ROCKET_MANEUVER_THRUST;
-
-        let verticalAcceleration = -ROCKET_FALL_ACCELERATION;
-
-        if (keysPressed.current.has(THRUST_KEY)) {
-            verticalAcceleration += ROCKET_MAIN_THRUST;
-        }
-
-        const totalAccelerationX = inputAccelerationX + windVector.current.x;
-        const totalAccelerationZ = inputAccelerationZ + windVector.current.z;
-
-        // --- 2. Update Velocity ---
-        currentVelocity.x += totalAccelerationX * dt;
-        currentVelocity.z += totalAccelerationZ * dt;
-        currentVelocity.x *= (1 - ROCKET_DRAG_XZ * dt);
-        currentVelocity.z *= (1 - ROCKET_DRAG_XZ * dt);
-
-        currentVelocity.y += verticalAcceleration * dt;
-        currentVelocity.y *= (1 - ROCKET_DRAG_VERTICAL * dt);
-
-        // --- 3. Clamp Velocity ---
-        currentVelocity.x = THREE.MathUtils.clamp(currentVelocity.x, -ROCKET_MAX_XZ_SPEED, ROCKET_MAX_XZ_SPEED);
-        currentVelocity.z = THREE.MathUtils.clamp(currentVelocity.z, -ROCKET_MAX_XZ_SPEED, ROCKET_MAX_XZ_SPEED);
-        currentVelocity.y = THREE.MathUtils.clamp(currentVelocity.y, -ROCKET_MAX_FALL_SPEED, ROCKET_MAX_RISE_SPEED);
-
-        // --- 4. Update Position ---
-        currentPosition.x += currentVelocity.x * dt;
-        currentPosition.y += currentVelocity.y * dt;
-        currentPosition.z += currentVelocity.z * dt;
-
-        // --- 5. Handle Rotation Animation ---
-        let targetRotationZ = 0;
-        if (keysPressed.current.has(LEFT_KEY))  targetRotationZ = ROCKET_TILT_ANGLE_Z;
-        else if (keysPressed.current.has(RIGHT_KEY)) targetRotationZ = -ROCKET_TILT_ANGLE_Z;
-
-        let targetRotationX = 0;
-        if (keysPressed.current.has(UP_KEY))    targetRotationX = -ROCKET_TILT_ANGLE_X;
-        else if (keysPressed.current.has(DOWN_KEY)) targetRotationX = ROCKET_TILT_ANGLE_X;
-        currentRotation.x = THREE.MathUtils.lerp(currentRotation.x, targetRotationX, dt * ROCKET_ROTATION_SPEED * 5);
-        currentRotation.z = THREE.MathUtils.lerp(currentRotation.z, targetRotationZ, dt * ROCKET_ROTATION_SPEED * 5);
-        currentRotation.y = 0;
-
-
-      // --- 3. Capture Zone Logic & Timer ---
-      let isInCaptureZone = false; // Flag to track if conditions are met this frame
-      const isInVerticalZone = currentPosition.y >= CAPTURE_ZONE_MIN_Y && currentPosition.y <= CAPTURE_ZONE_MAX_Y;
-
-
-      //console.log(isInVerticalZone, "if (isInVerticalZone)_____________");
-
-
-      if (isInVerticalZone) {
-
-        // Check if rocket's CENTER is horizontally within the capture zone bounds
-
-
-        const isInHorizontalZoneX = Math.abs(currentPosition.x - PLATFORM_CENTER_X +1 ) <= CAPTURE_ZONE_WIDTH / 2;
-
-
-
-        const isInHorizontalZoneZ = Math.abs(currentPosition.z - PLATFORM_CENTER_Z) <= CAPTURE_ZONE_DEPTH / 2;
-
-
-        // --- Placeholder for future checks ---
-        // TODO: Add speed and tilt checks here later
-        const verticalSpeedOK = true; // Math.abs(currentVelocity.y) <= MAX_LANDING_SPEED_VERTICAL;
-        const horizontalSpeedOK = true; // Math.sqrt(currentVelocity.x**2 + currentVelocity.z**2) <= MAX_LANDING_SPEED_HORIZONTAL;
-        const tiltOK = true; // Math.sqrt(currentRotation.x**2 + currentRotation.z**2) <= MAX_LANDING_TILT_RADIANS;
-        // --- End Placeholder ---
-
-        // Check if ALL conditions are met (currently just position)
-        if (isInHorizontalZoneX && isInHorizontalZoneZ && verticalSpeedOK && horizontalSpeedOK && tiltOK) {
-            isInCaptureZone = true; // All conditions met this frame
-            timeInCaptureZoneRef.current += dt; // Increment timer
-
-            // Update status message to show timer progress
-            setStatusMessage(`In capture zone... Holding for ${timeInCaptureZoneRef.current.toFixed(1)} / ${REQUIRED_CAPTURE_TIME.toFixed(1)}s`);
-            console.log(statusMessage);
- 
-
-            // Check if required time has been reached
-            if (timeInCaptureZoneRef.current >= REQUIRED_CAPTURE_TIME) {
-                // Successful Capture!
-                setGameState('landed');
-                setStatusMessage(`Captured! Held position for ${REQUIRED_CAPTURE_TIME.toFixed(1)}s. Press R.`);
-                console.log("SUCCESSFUL CAPTURE");
-
-                // Snap to final "caught" position/orientation (centered in the zone)
-                currentPosition.y = CAPTURE_TARGET_Y;
-                currentPosition.x = PLATFORM_CENTER_X;
-                currentPosition.z = PLATFORM_CENTER_Z;
-                currentRotation.x = 0;
-                currentRotation.z = 0;
-                currentRotation.y = 0;
-                currentVelocity.set(0, 0, 0);
-                // No return here yet, let fallback checks run (though they shouldn't trigger if landed)
-            }
-        }
-    }
-
-    // If not meeting *all* capture conditions this frame, reset the timer
-    if (!isInCaptureZone) {
-        // Only reset the message if it was showing timer progress
-        if (timeInCaptureZoneRef.current > 0) {
-             setStatusMessage(''); // Clear timer message if leaving zone/failing conditions
-        }
-        timeInCaptureZoneRef.current = 0;
-    }
-
-
-    // --- 4. Fallback Collision Checks (Platform Surface / Floor) ---
-    // These checks run *after* the capture logic. They only matter if not already landed/crashed.
-    // Use rocket base for physical collision checks.
-    const rocketBottomY = currentPosition.y - ROCKET_BASE_OFFSET;
-    const isMovingDown = currentVelocity.y < 0; // Check if moving downwards
-
-    // Check Platform Surface Collision (Only if moving down and missed capture)
-    if (isMovingDown && rocketBottomY <= PLATFORM_TOP_Y) {
-         // Check horizontal position relative to the *physical* platform (wider than capture zone maybe)
-        const onPlatformX = Math.abs(currentPosition.x - PLATFORM_CENTER_X) <= PLATFORM_WIDTH / 2;
-        const onPlatformZ = Math.abs(currentPosition.z - PLATFORM_CENTER_Z) <= PLATFORM_DEPTH / 2;
-
-        if (onPlatformX && onPlatformZ) {
-            console.log("Contact with platform surface (missed capture).");
-            setGameState('crashed');
-            setStatusMessage(`CRASHED! Hit platform surface. Aim for the capture zone! Press R.`);
-            // Snap to surface, stop motion
-            currentPosition.y = PLATFORM_TOP_Y + ROCKET_BASE_OFFSET;
-            currentVelocity.set(0, 0, 0);
-            // Optional crash rotation?
-            return; // Exit frame update after crash
-        }
-         // If vertically at platform level but horizontally off, continue falling to floor check
-    }
-
-    // Check Floor Collision (Only if moving down)
-    if (isMovingDown && rocketBottomY <= FLOOR_TOP_Y) {
-        console.log("Contact with floor!");
-        setGameState('crashed');
-        setStatusMessage(`CRASHED on floor! Missed everything. Press R.`);
-        // Snap to floor, stop motion
-        currentPosition.y = FLOOR_TOP_Y + ROCKET_BASE_OFFSET;
-        currentVelocity.set(0, 0, 0);
-        // Optional crash rotation?
-        return; // Exit frame update after crash
-    }
-
-    // --- 5. Fall Off Bottom Check --- (unchanged)
-    if (currentPosition.y < SCENE_BOUNDS_BOTTOM) {
-        console.log("Fell off bottom.");
-        setGameState('crashed');
-        setStatusMessage('Lost in space... Press R to reset.');
-        // Stop velocity to prevent further updates after falling off
-        currentVelocity.set(0, 0, 0);
-    }
-
-} else {
-    // If landed or crashed, ensure velocity stays zero
-    flameOpacityRef.current = 0;
-            if (flameRef.current) {
-                flameRef.current.visible = false;
-            }
-    currentVelocity.set(0, 0, 0);
- 
+  // --- Fall Off Bottom Check ---
+  // This part remains the same
+  if (currentPosition.y < SCENE_BOUNDS_BOTTOM) {
+      console.log("Fell off bottom.");
+      if (gameStateRef.current !== 'crashed') { // Prevent multiple messages
+          setGameState('crashed');
+          setStatusMessage('Lost in space... Press R.');
+          // Stop physics body (setLinvel is OK here)
+          body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+          body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+      }
+  }
+} else if (gameStateRef.current === 'landed' || gameStateRef.current === 'crashed') {
+ // No change needed here, the physics engine should bring it to rest
+ // due to damping or being snapped in the capture zone logic.
 }
-
 });
-const flameRelativePosition = useMemo(() => new THREE.Vector3(
-  0,                  // Centered horizontally
-  -ROCKET_BASE_OFFSET - 15.5, // Position slightly BELOW the rocket base
-  0                   // Centered depth-wise
-), []); 
+
+
+
+
  
 
-
-  // --- Visual Feedback based on State ---
-   const rocketColor = gameState === 'landed' ? 'lime' : gameState === 'crashed' ? 'red' : '#ADD8E6';
-   const rocketEmissive = gameState === 'landed' ? 'green' : gameState === 'crashed' ? 'darkred' : '#4682B4';
- const flameIsActive = keysPressed.current.has(THRUST_KEY) && gameState === 'playing';
+  const colliderHalfHeight = ROCKET_HEIGHT / 2;
   return (
-    <mesh ref={rocketRef} name={rocketName}   position={initialPosition} castShadow>
-     
-      <boxGeometry args={[ROCKET_WIDTH, ROCKET_HEIGHT, ROCKET_WIDTH]} />
-      <meshStandardMaterial color={rocketColor} emissive={rocketEmissive} metalness={0.5} roughness={0.5} />
-      {/* Cockpit camera is added via useLayoutEffect */}
-    
- 
-      <Flame
-                ref={flameRef} // Assign the ref here
-                position = {flameRelativePosition}
-                particleCount={3700}
-                isActive={flameIsActive}
-                flameHeight={5.5}
-                emitterRadius={0.2}
-                particleSize={2.18}
-                colorStart={new THREE.Color(0xff2a00)}
-                colorEnd={new THREE.Color(0xfff600)}
-                opacityRef={flameOpacityRef}
-                // Ensure the Flame component forwards the ref if it's a custom component:
-                // Inside FlameComponent.tsx:
-                // const Flame = React.forwardRef((props, ref) => {
-                //   // ... your flame logic ...
-                //   return <points ref={ref} {...props}>...</points>; // or <group ref={ref}>...</group>
-                // });
-                // export default Flame;
-            />
+    <RigidBody
+          ref={rocketApi}
+          colliders={false} // Use manual collider below
+          position={initialPosition}
+          linearDamping={ROCKET_LINEAR_DAMPING}
+          angularDamping={1.0}
+        
+          mass={1}
+          userData={{ type: 'rocket' }}
+      >
+          {/* Physical Collider - Stays the same size */}
+          <CuboidCollider
+              args={rocketColliderArgs}
+              onCollisionEnter={handleCollision}
+          />
 
-</mesh>
+
+
+
+
+      {/* --- DEBUG: Visual Bounding Box --- */}
+      {/* 2. Visual Mesh for the Bounding Box */}
+      {/* This mesh uses the FULL dimensions derived from the collider args */}
+      {/* It's placed inside the RigidBody, so it automatically follows its position/rotation */}
+      <mesh name="physicsBoundingBoxVisualizer">
+        <boxGeometry args={visualBoundingBoxArgs} />
+        <meshBasicMaterial
+            color="lime"      // Bright color for visibility
+            wireframe={true}  // Show as wireframe to see the model inside
+            transparent={true} // Allow seeing through
+            opacity={0.6}     // Make it semi-transparent
+            depthWrite={false}// Optional: Prevents potential z-fighting issues
+        />
+      </mesh>
+      {/* ---------------------------------- */}
+
+
+
+
+
+
+          {/* Visual Representation: The Loaded Model */}
+          {/* We use <primitive> to render an existing THREE object (the loaded group) */}
+          {/* The `object` prop takes the result from useLoader */}
+          {/* Position/Rotation are automatically handled by the parent RigidBody */}
+          <primitive
+              ref={rocketRef}     // Attach the ref here
+              name={rocketName}   // Assign the name here
+              object={obj}        // The loaded OBJ (as a THREE.Group)
+              scale={modelScale}  // Apply the calculated scale
+              position={[0, -colliderHalfHeight, 0]}
+          >
+              {/* Cockpit camera is added as a child via useLayoutEffect */}
+
+              {/* Flame Component */}
+              {/* *** IMPORTANT: Adjust flame position RELATIVE to the MODEL's base *** */}
+              {/* This depends heavily on where the origin (0,0,0) of your model is */}
+              {/* and the scaling applied. Start with target height / 2 and tweak. */}
+
+          </primitive>
+          <Flame
+                  ref={flameRef}
+                  // Example: Position below the calculated center point after scaling
+                  position={[0, -colliderHalfHeight  , 0]} // ADJUST THIS Y VALUE!
+                  particleCount={1500}
+                   
+                  flameHeight={5.5}
+                  emitterRadius={0.2}
+                  particleSize={0.18}
+                  colorStart={new THREE.Color(0xff2a00)}
+                  colorEnd={new THREE.Color(0xfff600)}
+                  opacityRef={flameOpacityRef}
+              />
+      </RigidBody>
   );
 };
+
+
+
+
+
+
+
 
 
 
@@ -962,33 +1171,30 @@ const CockpitCameraUpdater = ({ rocketName, cameraName }: { rocketName: string, 
       const cockpitCam = scene.getObjectByName(cameraName) as THREE.PerspectiveCamera | undefined;
 
       if (rocket && cockpitCam) {
-          // Calculate desired camera position relative to rocket's current world matrix
-          // Position inside, near the top, slightly forward for view
-          const cameraPosition = new THREE.Vector3(0, ROCKET_CENTER_TO_TOP - 0.5, 0.1);
-          cameraPosition.applyMatrix4(rocket.matrixWorld); // Transform local offset to world space
-          cockpitCam.position.copy(cameraPosition);
-           
+      // Set camera position in rocket's local space (inside, near the top)
+      const localOffset = new THREE.Vector3(1,-162, 1); // ROCKET_CENTER_TO_TOP - 0.5 = 3.55 - 0.5 = 3.05
+      cockpitCam.position.copy(localOffset);
+      cockpitCam.updateProjectionMatrix(); 
 
-          // Calculate look-at point relative to rocket
-          // Look slightly down and forward from camera's new position
-          const lookAtOffset = new THREE.Vector3(0, 0, 0); // Adjust Z to look further/closer
-          const lookAtPosition = lookAtOffset.applyMatrix4(rocket.matrixWorld); // Transform local offset to world space
-          // OR simpler: look forward along rocket's negative Z axis, slightly tilted down
-          // const lookDirection = new THREE.Vector3(0, -0.2, -1); // Local direction
-          // lookDirection.transformDirection(rocket.matrixWorld); // Convert direction to world space
-          // lookAtPosition.copy(cameraPosition).add(lookDirection);
+      // Align camera rotation with rocket and add a slight downward tilt
+      cockpitCam.quaternion.copy(rocket.quaternion);
+      const tiltAngle = THREE.MathUtils.degToRad(-45); // 5 degrees downward tilt
+      const tiltAngle2 = THREE.MathUtils.degToRad(-90); // 5 degrees downward tilt
+      const tiltAngle3 = THREE.MathUtils.degToRad(-90); // 5 degrees downward tilt
 
-          cockpitCam.lookAt(lookAtPosition);
+      // cockpitCam.rotateX(tiltAngle);
+        cockpitCam.rotateX(tiltAngle2);
+      cockpitCam.rotateY(tiltAngle);
+      cockpitCam.rotateZ(tiltAngle3);
 
-          // View component might handle aspect ratio updates based on portal size,
-          // but manual update can be safer if needed.
-           cockpitCam.updateProjectionMatrix();
-      }
+      // Update projection matrix (optional, handled in MultiViewRenderer, but safe to include)
+      cockpitCam.updateProjectionMatrix();
+      
+    }
   });
 
   return null; // This component doesn't render anything itself
 };
-
 
 
 
@@ -1008,17 +1214,18 @@ const MultiViewRenderer = () => {
 
   useFrame(() => {
     const cockpitCam = scene.getObjectByName(COCKPIT_CAMERA_NAME) as THREE.PerspectiveCamera | undefined;
+    const stationaryCam = scene.getObjectByName(STATIONARY_CAMERA_NAME) as THREE.PerspectiveCamera | undefined;
 
     // Define viewports
     const mainViewport = { x: 0, y: 0, width: size.width, height: size.height };
     const pipWidth = Math.floor(size.width / 4);
     const pipHeight = Math.floor(size.height / 4);
     const pipX = size.width - pipWidth - 10;
-    const pipY = size.height - pipHeight - 10; // Dynamic Y position
+    const pipY = size.height - pipHeight - 10;
     const pipViewport = { x: pipX, y: pipY, width: pipWidth, height: pipHeight };
 
     gl.autoClear = false;
-    gl.clear(); // Clears color and depth buffers for the entire canvas
+    gl.clear();
 
     // Render Main View
     gl.setViewport(mainViewport.x, mainViewport.y, mainViewport.width, mainViewport.height);
@@ -1027,8 +1234,6 @@ const MultiViewRenderer = () => {
     if (camera instanceof THREE.PerspectiveCamera) {
       camera.aspect = mainViewport.width / mainViewport.height;
       camera.updateProjectionMatrix();
-    } else if (camera instanceof THREE.OrthographicCamera) {
-      // Since makeDefault is used with @react-three/fiber, resizing is handled automatically
     }
     gl.render(scene, camera);
 
@@ -1037,22 +1242,80 @@ const MultiViewRenderer = () => {
       cockpitCam.aspect = pipViewport.width / pipViewport.height;
       cockpitCam.updateProjectionMatrix();
 
-      // Set scissor for PiP area and clear depth buffer
       gl.setScissor(pipViewport.x, pipViewport.y, pipViewport.width, pipViewport.height);
       gl.setScissorTest(true);
-      gl.clear(gl.DEPTH_BUFFER_BIT); // Clear depth buffer in PiP area only
+      gl.clear(gl.DEPTH_BUFFER_BIT);
 
-      // Set viewport and render PiP view
       gl.setViewport(pipViewport.x, pipViewport.y, pipViewport.width, pipViewport.height);
       gl.render(scene, cockpitCam);
     }
 
+    // Render Stationary Camera View
+    if (stationaryCam) {
+      const stationaryViewport = { x: pipViewport.x , y: pipViewport.y -450, width: pipWidth, height: pipHeight }; // Adjust position as needed
+      stationaryCam.aspect = stationaryViewport.width / stationaryViewport.height;
+      stationaryCam.updateProjectionMatrix();
+
+      gl.setScissor(stationaryViewport.x, stationaryViewport.y, stationaryViewport.width, stationaryViewport.height);
+      gl.setScissorTest(true);
+      gl.clear(gl.DEPTH_BUFFER_BIT);
+
+      gl.setViewport(stationaryViewport.x, stationaryViewport.y, stationaryViewport.width, stationaryViewport.height);
+      gl.render(scene, stationaryCam);
+    }
+
     gl.setScissorTest(false);
     gl.autoClear = true;
-  }, 1); // Priority 1 ensures rendering after scene updates
+  }, 1);
 
   return null;
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const STATIONARY_CAMERA_NAME = "stationaryCamera";
+
+
+
+
+ 
+
+function CockpitCameraDebugger() {
+  const { scene } = useThree();
+  const cockpitCam = scene.getObjectByName('cockpitCamera') || scene.children.find(obj => obj.isCamera);
+  const helperRef = useRef(null);
+
+  useEffect(() => {
+    if (cockpitCam && !helperRef.current) {
+      const helper = new THREE.CameraHelper(cockpitCam);
+      scene.add(helper);
+      helperRef.current = helper;
+    }
+
+    return () => {
+      if (helperRef.current) {
+        scene.remove(helperRef.current);
+        helperRef.current = null;
+      }
+    };
+  }, [cockpitCam, scene]);
+
+  return null;
+}
+
+ 
+
 
 
 
@@ -1069,21 +1332,27 @@ const MultiViewRenderer = () => {
  */
 const RocketLandingScene = () => {
 
+  const [stationaryCamera] = useState(() => {
+    const cam = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+    cam.name = STATIONARY_CAMERA_NAME;
+    cam.position.set(1, -1, 0); // Position the camera
+    cam.lookAt(new THREE.Vector3(-2, PLATFORM_TOP_Y, 0.5)); // Look at the platform
+    return cam;
+  });
+
+
 
   const rocketBodyHeight = 8;
   const rocketBodyRadius = 0.5;
   const flameEmitterY = -rocketBodyHeight / 2; // Position flame below the body
   const pipViewRef = useRef<HTMLDivElement>(null!);
-  const [pipCamera] = useState(() => {
-    const cam = new THREE.PerspectiveCamera(75, 1, 0.1, 100); // Initial aspect ratio (1), View/Updater will adjust
-    cam.name = COCKPIT_CAMERA_NAME; // Assign the name for the updater to find it
-    // Set initial position - will be controlled by CockpitCameraUpdater
-    cam.position.set(0, 5, 5);
-    // Optional: Set initial rotation/lookAt if needed before updater takes over
-    // cam.lookAt(0, 0, 0);
-    return cam;
-});
-  
+  const worldGravity: [number, number, number] = [0, -9.81 * 0.8, 0]; // Example: Slightly less than Earth gravity
+
+  const [deployArms, setDeployArms] = useState(false); // State to control arm deployment
+
+
+
+ 
 
 
   // NOTE: Game state is currently managed within FallingRocket.
@@ -1092,15 +1361,6 @@ const RocketLandingScene = () => {
   // const [statusMessage, setStatusMessage] = useState<string>('');
 
   return (
-    
-
-
-
-
-
-
-
-
 
 <Canvas
       style={{ 
@@ -1118,12 +1378,10 @@ const RocketLandingScene = () => {
       // frameloop="demand" // Or manage manually if MultiViewRenderer isn't rendering every frame
     >
         {/* Main Camera */}
-        <OrthographicCamera
+        <PerspectiveCamera
             makeDefault
-            position={[-4, 8, 15]} // Adjusted position slightly for better view of tall platform
-            zoom={30} // Zoomed in slightly more
-            near={0.1}
-            far={1000}
+            position={[-21, 11, 40]} // Adjusted position slightly for better view of tall platform
+  
             // Optional: Adjust frustum bounds if needed for aspect ratio
             // left={-aspect * frustumSize / 2}
             // right={aspect * frustumSize / 2}
@@ -1131,7 +1389,7 @@ const RocketLandingScene = () => {
             // bottom={-frustumSize / 2}
         />
 
-
+<primitive object={stationaryCamera} />
 
 
 
@@ -1167,7 +1425,10 @@ const RocketLandingScene = () => {
         shadow-camera-bottom={-25} // Deeper shadow area
         />
               <directionalLight position={[-5, -5, -5]} intensity={0.2} />
+              <CockpitCameraUpdater rocketName={ROCKET_MESH_NAME} cameraName={COCKPIT_CAMERA_NAME} />
+              <CockpitCameraDebugger />
 
+              <Physics gravity={worldGravity} >
       {/* Scene Content */}
       <Suspense fallback={null}>
         <LandingPlatform />
@@ -1178,11 +1439,11 @@ const RocketLandingScene = () => {
         {/* Add the capture zone visualizer */}
         <CaptureZoneVisualizer />
         < CubeStackVisualizer/>
-        <FallingRocket /> {/* Contains game state logic */}
+        <FallingRocket rocketName={ROCKET_MESH_NAME} /> {/* Contains game state logic */}
         <LandingFloor/>
         {/* <Text> component could be added here for status messages if state is lifted */}
       </Suspense>
-
+      </Physics>
       {/* Controls */}
       <OrbitControls enableRotate={true} enablePan={true} enableZoom={true} />
 

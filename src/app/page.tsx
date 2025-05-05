@@ -6,7 +6,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, OrthographicCamera, useTexture , Text, View, PerspectiveCamera, useProgress, Stats  } from '@react-three/drei';
 import * as THREE from 'three';
 import AxesHelperComponent from './AxesHelperComponent';
-import { Physics, RigidBody, RigidBodyType , CuboidCollider } from '@react-three/rapier';
+import { Physics, RigidBody , CuboidCollider } from '@react-three/rapier';
 import   {   TrimeshCollider, ConvexHullCollider, RapierRigidBody } from '@react-three/rapier'; // Import types
 
 import Flame from './FlameComponent'; // Import the Flame component

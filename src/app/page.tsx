@@ -13,6 +13,7 @@ import Flame from './FlameComponent'; // Import the Flame component
 import InstructionsUI from './Instructions';
  
 import RotatingCamera from "./RotatingCamera";
+import LoseDrawer from "./LoseDrawer";
 
 import WinDrawer from "./WinDrawer";
 
@@ -217,6 +218,9 @@ const LandingFloor = () => {
   // const floorColliderArgs: [number, number, number] = [floorWidth / 2, 1, floorDepth / 2]; // Half-extents (Width/2, Height/2, Depth/2) - Make it thicker
   const colliderCenterYOffset = 0.1; // Center the collider slightly above PLATFORM_Y
 
+
+
+  
   return (
     // RigidBody remains fixed. Its position defines the base plane level.
     <RigidBody
@@ -1237,7 +1241,17 @@ function Loaderr() {
 /**
  * main FallingRocket object that falls from sky with attached flame.
  */
-const FallingRocket = ({ rocketName , isGameActive,  onLandedChange }: { rocketName: string, isGameActive: boolean,  onLandedChange: boolean }) => {
+const FallingRocket = ({
+  rocketName,
+  isGameActive,
+  onLandedChange, // Existing prop
+  onCrashedChange // <<< ADD THIS PROP
+}: {
+  rocketName: string;
+  isGameActive: boolean;
+  onLandedChange: (landed: boolean) => void; // Keep existing
+  onCrashedChange: (crashed: boolean) => void; // <<< ADD THIS TYPE
+})  => {
   // --- Refs ---
   const rocketApi = useRef<RapierRigidBody>(null!); // Ref for Rapier API
   const rocketRef = useRef<THREE.Mesh>(null!); // Ref for visual mesh (for tilt)
@@ -1300,22 +1314,53 @@ const FallingRocket = ({ rocketName , isGameActive,  onLandedChange }: { rocketN
   // --- Game State Setter ---
   // Function to update both state and ref simultaneously
   const setGameState = (newState: GameState) => {
+
+    const previousState = gameStateRef.current;
     gameStateRef.current = newState;
     _setGameState(newState);
-    
-        // Call the parent callback when landing state changes
-        if (newState === 'landed') {
-          onLandedChange?.(true); // Rocket has landed
-      } else if (newState === 'playing' || newState === 'crashed') {
-           // If transitioning back to playing (e.g., reset) or crashed, it's not landed
-          onLandedChange?.(false);
-      }
-  };
+
+    // Call the parent callback when landing state changes
+    if (newState === 'landed') {
+      onLandedChange?.(true); // Rocket has landed
+  } else if (newState === 'playing' || newState === 'crashed') {
+       // If transitioning back to playing (e.g., reset) or crashed, it's not landed
+      onLandedChange?.(false);
+  }
+
+  // Landed State
+  if (newState === 'landed' && previousState !== 'landed') {
+    onLandedChange?.(true);
+} else if (newState !== 'landed' && previousState === 'landed') {
+     // If moving AWAY from landed (e.g., reset)
+    onLandedChange?.(false);
+}
+
+// Crashed State <<< ADD THIS LOGIC
+if (newState === 'crashed' && previousState !== 'crashed') {
+    onCrashedChange?.(true); // Signal crash start
+} else if (newState !== 'crashed' && previousState === 'crashed') {
+     // If moving AWAY from crashed (e.g., reset)
+    onCrashedChange?.(false); // Signal crash end
+}
+
+// Ensure landed/crashed flags are false if resetting or playing
+if (newState === 'playing' || newState === 'resetting') {
+    onLandedChange?.(false);
+    onCrashedChange?.(false);
+}
+};
+
+
+  
   // --- Rocket Visuals ---
   const rocketColor = gameState === 'landed' ? 'lime' : gameState === 'crashed' ? 'red' : '#ADD8E6';
   const rocketEmissive = gameState === 'landed' ? 'green' : gameState === 'crashed' ? 'darkred' : '#4682B4';
 
   const obj = useLoader(OBJLoader, '/booster_obj_1.obj'); // Or '/models/rocket.obj' etc.
+
+
+
+
 
 
   // Create a memoized material instance
@@ -1346,6 +1391,10 @@ useEffect(() => {
 }, [obj, rocketColor, rocketEmissive, rocketMaterial]); // Re-run if these change
 
 
+
+
+
+
  
 
 const modelScale = useMemo(() => {
@@ -1374,6 +1423,11 @@ const modelScale = useMemo(() => {
   return new THREE.Vector3(scaleY, scaleY, scaleY);
 
 }, [obj]); // Dependency array remains the same
+
+
+
+
+
 
 
 
@@ -1409,9 +1463,13 @@ const handleCollision = (event: CollisionPayload) => {
 
 
 
+
+
+
+
   const resetGame = () => {
     landedPositionRef.current = null;
-landedRotationRef.current = null;
+    landedRotationRef.current = null;
     setGameState('resetting');
     const newStartPosition = getRandomStartPosition();
     const newWind = getRandomWindVector();
@@ -1442,8 +1500,16 @@ landedRotationRef.current = null;
     setTimeout(() => {
       setGameState('playing');
        
-    }, 50); // Increased delay slightly
+    }, 110); // Increased delay slightly
   };
+
+
+
+
+
+
+
+
 
 
 
@@ -2028,7 +2094,7 @@ const RocketLandingScene = () => {
 
   const [isGameStarted, setIsGameStarted] = useState(true);
   const [isRocketLanded, setIsRocketLanded] = useState(false);
-
+  const [isRocketCrashed, setIsRocketCrashed] = useState(false); 
   const [stationaryCamera] = useState(() => {
     const cam = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
     cam.name = STATIONARY_CAMERA_NAME;
@@ -2040,9 +2106,15 @@ const RocketLandingScene = () => {
   const worldGravity: [number, number, number] = [0, -9.81 * 0.8, 0]; // Example: Slightly less than Earth gravity
 
   const handleLandedChange = React.useCallback((landed: boolean) => {
-     
     setIsRocketLanded(landed);
-}, []); // Empty dependency array means this function identity is stable
+    if (landed) setIsRocketCrashed(false); // Ensure crashed is false if landed
+  }, []);
+
+  // <<< ADD Callback for crashing
+  const handleCrashedChange = React.useCallback((crashed: boolean) => {
+    setIsRocketCrashed(crashed);
+    if (crashed) setIsRocketLanded(false); // Ensure landed is false if crashed
+  }, []);
 
   const handleStartGame = () => {
     setIsGameStarted(true);
@@ -2193,7 +2265,7 @@ const RocketLandingScene = () => {
         {/* Add the capture zone visualizer 
         <CaptureZoneVisualizer />           */}
         {/* < CubeStackVisualizer/>*/}
-        <FallingRocket  onLandedChange={handleLandedChange} rocketName={ROCKET_MESH_NAME } isGameActive={isGameStarted} /> {/* Contains game state logic */}
+        <FallingRocket   onCrashedChange={handleCrashedChange}  onLandedChange={handleLandedChange} rocketName={ROCKET_MESH_NAME } isGameActive={isGameStarted} /> {/* Contains game state logic */}
         <LandingFloor/>
         < Waterfloor/>
         {/* <Text> component could be added here for status messages if state is lifted */}
@@ -2211,7 +2283,7 @@ const RocketLandingScene = () => {
     </Canvas>
       <InstructionsUI />
       <WinDrawer open={isRocketLanded} onRestart={sendReset} />
-
+      <LoseDrawer open={isRocketCrashed} onRestart={sendReset} /> 
       
 
 

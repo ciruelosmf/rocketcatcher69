@@ -1,3 +1,6 @@
+/*
+
+
 "use client"; // Required for Next.js App Router components using hooks
 
 import React, { Suspense, useMemo, useEffect, useRef, useState } from 'react';
@@ -128,8 +131,8 @@ const SimpleParticleSystem = ({ count = 5000, shape = 'box', size = 0.05 }) => {
   return (
     <points ref={pointsRef}>
       <bufferGeometry>
-        {/* Use attach="attributes-position" for R3F >= v8 */}
-        {/* For older R3F, you might need attachObject={['attributes', 'position']} */}
+        
+        
         <bufferAttribute
           ref={bufferRef}
           attach="attributes-position"
@@ -260,7 +263,7 @@ function DynamicText({
         // maxWidth={maxWidth}
          
       >
-        {displayText} {/* Pass the pre-wrapped string with '\n' */}
+        {displayText}  
         <meshStandardMaterial color="aqua" emissive="darkblue" emissiveIntensity={0.5} />
       </Text3D>
     </group>
@@ -291,7 +294,7 @@ export default function ModelTestPage() {
     // Use position: relative on the main container to allow absolute positioning of the input
     <div style={{ position: 'relative', width: '100vw', height: '100vh', background: '#111' }}>
 
-      {/* --- Text Input Field (Outside Canvas) --- */}
+   
       <div style={{
           position: 'absolute', // Position over the canvas
           top: '20px',          // Adjust position as needed
@@ -311,13 +314,12 @@ export default function ModelTestPage() {
           style={{ padding: '5px' }}
         />
       </div>
-
-      {/* --- Canvas --- */}
+ 
       <Canvas
         shadows
         camera={{ position: [2, 3, 8], fov: 50 }}
       >
-        {/* Lighting */}
+        
         <ambientLight intensity={0.5} />
         <directionalLight
           position={[5, 10, 7]}
@@ -328,40 +330,40 @@ export default function ModelTestPage() {
         />
 
 
-        {/* Floor 
+     Floor 
 
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.5, 0]} receiveShadow>
             <planeGeometry args={[20, 20]} />
             <meshStandardMaterial color="#333" side={THREE.DoubleSide}/>
         </mesh>
 
-*/}
+ 
 
 
-        {/* Scene Content */}
+   
         <Suspense fallback={<Loader />}>
-          {/* Centered Model */}
+        
           <Center>
             
           </Center>
 
 
 
-           {/* Particle System
-           
- */}
+          
 <SimpleParticleSystem count={1000} size={0.04} shape="sphere" rotation={[0, -1, 10]}/>
 
-           {/* --- Dynamic 3D Text --- */}
-           {/* Pass the state variable to the DynamicText component */}
+           
            <DynamicText textContent={inputText} position={[10, 2, 10]}  />
-           {/* You might need to adjust the Y position depending on your model size */}
+    
 
         </Suspense>
 
-        {/* Controls */}
+       
         <OrbitControls />
       </Canvas>
     </div>
   );
-}
+} 
+
+
+*/

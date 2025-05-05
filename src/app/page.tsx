@@ -2232,8 +2232,11 @@ const RocketLandingScene = () => {
         />
 
 <primitive object={stationaryCamera} />
- 
-<AxesHelperComponent size={1} /> {/* Adjust size as needed */}
+
+ {/* 
+<AxesHelperComponent size={1} /> 
+ */}
+
       {/* Lighting */}
       <ambientLight intensity={0.5} />
       <directionalLight
@@ -2252,7 +2255,7 @@ const RocketLandingScene = () => {
               <CockpitCameraUpdater rocketName={ROCKET_MESH_NAME} cameraName={COCKPIT_CAMERA_NAME} />
              {/*  <CockpitCameraDebugger /> */}
 
-              <Physics gravity={worldGravity}    debug   paused={!isGameStarted}>
+              <Physics gravity={worldGravity}        paused={!isGameStarted}>
               
       {/* Scene Content */}
       <Suspense fallback={null}>

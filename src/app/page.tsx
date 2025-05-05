@@ -2001,7 +2001,8 @@ const MultiViewRenderer = () => {
 
       gl.setScissor(pipViewport.x, pipViewport.y, pipViewport.width, pipViewport.height);
       gl.setScissorTest(true);
-      gl.clear(gl.DEPTH_BUFFER_BIT);
+
+       gl.clearDepth();
 
       gl.setViewport(pipViewport.x, pipViewport.y, pipViewport.width, pipViewport.height);
       gl.render(scene, cockpitCam);
@@ -2015,7 +2016,7 @@ const MultiViewRenderer = () => {
 
       gl.setScissor(stationaryViewport.x, stationaryViewport.y, stationaryViewport.width, stationaryViewport.height);
       gl.setScissorTest(true);
-      gl.clear(gl.DEPTH_BUFFER_BIT);
+      gl.clearDepth();
 
       gl.setViewport(stationaryViewport.x, stationaryViewport.y, stationaryViewport.width, stationaryViewport.height);
       gl.render(scene, stationaryCam);

@@ -2048,7 +2048,7 @@ const STATIONARY_CAMERA_NAME = "stationaryCamera";
 
 
  
-
+/* 
 function CockpitCameraDebugger() {
   const { scene } = useThree();
   const cockpitCam = scene.getObjectByName('cockpitCamera') || scene.children.find(obj => obj.isCamera);
@@ -2071,7 +2071,7 @@ function CockpitCameraDebugger() {
 
   return null;
 }
-
+ */
  
 
 

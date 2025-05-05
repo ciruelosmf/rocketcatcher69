@@ -147,18 +147,11 @@ const Flame = React.forwardRef<THREE.Points, FlameProps>((
             <bufferGeometry attach="geometry">
                 <bufferAttribute
                     attach="attributes-position"
-                    count={particleCount}
-                    array={positions}
-                    itemSize={3}
-                    needsUpdate={true} // Keep true initially
+                    args={[positions, 3]} 
                 />
                 <bufferAttribute
                     attach="attributes-color"
-                    count={particleCount}
-                    array={colors}
-                    itemSize={3}
-                    normalized={false} // Color values are 0-1
-                    needsUpdate={true} // Keep true initially
+                    args={[positions, 3]} 
                 />
             </bufferGeometry>
             <pointsMaterial

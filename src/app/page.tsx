@@ -3,7 +3,7 @@
 
 import React, { Suspense, useRef, useEffect, useState, useLayoutEffect, useMemo } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, OrthographicCamera, useTexture , Text, View, PerspectiveCamera, useProgress, Stats  } from '@react-three/drei';
+import { Html, OrbitControls, OrthographicCamera, useTexture , Text, View, PerspectiveCamera, useProgress, Stats  } from '@react-three/drei';
 import * as THREE from 'three';
 import AxesHelperComponent from './AxesHelperComponent';
 import { Physics, RigidBody , CuboidCollider, CollisionPayload,
@@ -1215,9 +1215,14 @@ const getRandomStartPosition = (): THREE.Vector3 => {
 
 function Loader() {
   const { progress } = useProgress();
-  return <Text>{`Loading Model: ${progress.toFixed(0)}%`}</Text>; // Basic text loader
+  return (
+    <Html center>
+      <div style={{ color: 'white', fontSize: '1.5em' }}>
+        Loading RocketCatcher69: {progress.toFixed(0)}%
+      </div>
+    </Html>
+  );
 }
-
 
 
 
@@ -2139,7 +2144,7 @@ const RocketLandingScene = () => {
       left: 0,
       width: '100%',
       height: '100%',
- 
+      
       display: 'flex',
       justifyContent: 'center',
       alignItems: 'center',
@@ -2151,21 +2156,20 @@ const RocketLandingScene = () => {
         backgroundColor: '#282c34', // Dark background for the modal content
         padding: '30px',
         borderRadius: '10px',
+        
+
         textAlign: 'center',
         boxShadow: '0 5px 15px rgba(0,0,0,0.3)',
         maxWidth: '500px', // Max width for the popup
       }}>
-        <h2>Welcome to Rocket Lander!</h2>
+         
         {/* Replace with your actual image path in the public folder */}
         <img
-          src="/rocket_lander_logo.png" // <<<--- CHANGE THIS TO YOUR IMAGE PATH
-          alt="Rocket Lander"
+          src="/initialpopup.webp" // <<<--- CHANGE THIS TO YOUR IMAGE PATH
+          alt="Rocket RocketCatcher69"
           style={{ maxWidth: '80%', height: 'auto', margin: '20px 0', borderRadius: '5px' }}
         />
-        <p style={{ marginBottom: '25px', lineHeight: '1.5' }}>
-          Prepare for a challenging landing sequence. Use your thrusters carefully
-          to guide the booster onto the catch tower. Good luck!
-        </p>
+ 
         <button
           onClick={handleStartGame}
           style={{
@@ -2182,7 +2186,7 @@ const RocketLandingScene = () => {
           onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#50c3e0'}
           onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#61dafb'}
         >
-          Start Simulation
+          Start RocketCatcher69
         </button>
       </div>
     </div>

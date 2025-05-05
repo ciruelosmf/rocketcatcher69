@@ -54,18 +54,7 @@ Here is the prompt you'll be improving today:
 
 <prompt_to_improve>
 
-Project Context
-Developing a SpaceX-inspired rocket landing simulation using:
-
-Next.js
-
-React Three Fiber (R3F)
-
-Drei
-
-TypeScript
-
-Core Issues: rocket and scene render; flame does not show up, it was working a version ago; spott any other issues
+gemini, i need help with my code. it is a react three fiber drei projectt, and is a game of a falling rocket. tthe games tarts with the falling rocket, which you can also thurst up using "space bar". my issues is that the game starts with a falling rocket, but if i press the "ttrhust key" it goes up, but it goes up indefinetly; after releaseing "tthrust key" it should go again down (for gravitty obvious reasons). read the code and spot the problem, give solution if possible: '''typescriptt
 
 </prompt_to_improve>
 
@@ -89,17 +78,29 @@ I am developing a SpaceX-inspired rocket landing simulation using Next.js, React
 </project_context>
 
 <primary_challenge>
-The main issue is a **regression**: the rocket's flame effect, which was previously rendering correctly, is now **no longer visible**.
+
+
+I need help debugging my React Three Fiber/Drei rocket game. The gameplay involves a falling rocket that should:
+1) Start falling due to gravity
+2) Rise when spacebar is pressed
+3) Fall again when spacebar is released
+
+Current issue: The rocket rises indefinitely when the thrust key is pressed, instead of falling again after release.
+
+
 </primary_challenge>
 
 <secondary_objective>
-Beyond the flame issue, please identify any potential architectural weaknesses, performance concerns, or deviations from common R3F/Drei best practices evident in simulation development.
+none.
 </secondary_objective>
 
 <assistance_focus>
 Please provide:
 just the code solution and a small explanantion, do not write whole app code again.
-read the current code: '''
+read the current code:
+
+
+ '''
 
 
 '''.

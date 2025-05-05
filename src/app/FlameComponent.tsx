@@ -1,3 +1,6 @@
+// \src\app\FlameComponent.tsx
+
+
 import React, { useRef, useMemo, useEffect } from 'react'; // Added useEffect
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';

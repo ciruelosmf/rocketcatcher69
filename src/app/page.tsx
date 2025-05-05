@@ -1,20 +1,24 @@
+// \src\app\page.tsx
 "use client"
 
 import React, { Suspense, useRef, useEffect, useState, useLayoutEffect, useMemo } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, OrthographicCamera, Text, View, PerspectiveCamera, useProgress  } from '@react-three/drei';
+import { OrbitControls, OrthographicCamera, useTexture , Text, View, PerspectiveCamera, useProgress, Stats  } from '@react-three/drei';
 import * as THREE from 'three';
 import AxesHelperComponent from './AxesHelperComponent';
-import { Physics, RigidBody, CuboidCollider } from '@react-three/rapier';
-import type { RapierRigidBody, CollisionPayload } from '@react-three/rapier'; // Import types
+import { Physics, RigidBody, RigidBodyType , CuboidCollider } from '@react-three/rapier';
+import   {   TrimeshCollider, ConvexHullCollider, RapierRigidBody } from '@react-three/rapier'; // Import types
 
 import Flame from './FlameComponent'; // Import the Flame component
+import InstructionsUI from './Instructions';
  
- 
+import RotatingCamera from "./RotatingCamera";
 
+import WinDrawer from "./WinDrawer";
 
 import { useLoader } from '@react-three/fiber'
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js'
+import { GLTFLoader  } from 'three/addons/loaders/GLTFLoader.js'
 
 // --- Constants ---
 // Scene
@@ -48,7 +52,7 @@ const CAPTURE_ZONE_MAX_Y = -2.8 ; // -1.5
 
 
 // --- Capture Time ---
-const REQUIRED_CAPTURE_TIME = 2.1; // Seconds required inside the zone
+const REQUIRED_CAPTURE_TIME = 0.69; // Seconds required inside the zone
 
 
 // Rocket Physics & Control
@@ -63,7 +67,7 @@ const ROCKET_CENTER_TO_TOP = ROCKET_HEIGHT / 2; // Distance from center to top (
 
 
 // Landing Criteria (Existing - will be adapted later)
-const MAX_LANDING_SPEED_VERTICAL = 0.5; // Max vertical speed for safe landing (units/sec)
+const MAX_LANDING_SPEED_VERTICAL = 0.6; // Max vertical speed for safe landing (units/sec)
 const MAX_LANDING_TILT_RADIANS = Math.PI / 18; // Approx 10 degrees max tilt allowed
 // Add Horizontal speed check constant (will be used later)
 const MAX_LANDING_SPEED_HORIZONTAL = 0.2; // Placeholder+
@@ -71,27 +75,28 @@ const MAX_LANDING_SPEED_HORIZONTAL = 0.2; // Placeholder+
 
 
 // Vertical Physics (Y-Axis)
-const ROCKET_FALL_ACCELERATION = 0.5;
-const ROCKET_MAIN_THRUST = 0.9;
+const ROCKET_FALL_ACCELERATION = 0.001;
+const ROCKET_MAIN_THRUST = 1.3;
  
+// ROCKET_DRAG_VERTICAL = 0.05; origi
  
-const ROCKET_DRAG_VERTICAL = 0.05;
+const ROCKET_DRAG_VERTICAL = 7.05;
 
 // Horizontal Plane Physics (XZ-Axis)
-const ROCKET_MANEUVER_THRUST = 2.0;
+const ROCKET_MANEUVER_THRUST = 1.6;
  
 const ROCKET_DRAG_XZ = 0.35;
 
 // Rocket Animation
-const ROCKET_TILT_ANGLE_Z = Math.PI / 14;
-const ROCKET_TILT_ANGLE_X = Math.PI / 14;
-const ROCKET_ROTATION_SPEED = 0.4;
+const ROCKET_TILT_ANGLE_Z = Math.PI / 22;
+const ROCKET_TILT_ANGLE_X = Math.PI / 22;
+const ROCKET_ROTATION_SPEED = 0.45;
 
 // Controls
-const LEFT_KEY = 'ArrowLeft';
-const RIGHT_KEY = 'ArrowRight';
-const UP_KEY = 'ArrowUp';
-const DOWN_KEY = 'ArrowDown';
+const LEFT_KEY = 'a';
+const RIGHT_KEY = 'd';
+const UP_KEY = 'w';
+const DOWN_KEY = 's';
 const THRUST_KEY = ' ';
 const RESET_KEY = 'r';
 
@@ -107,7 +112,7 @@ type GameState = 'playing' | 'landed' | 'crashed' | 'resetting';
 
 // Vertical Physics (Y-Axis) - Using FORCE now
 const EFFECTIVE_GRAVITY_MAGNITUDE = Math.abs(-9.81 * 0.8 * 1.5); // Calculated from worldGravity * gravityScale (approx 11.77)
-const THRUST_ACCELERATION_FACTOR = 0.6; // How much stronger than gravity is the thrust? (e.g., 1.0 = hover, 1.5 = 50% more force) - **TUNE THIS**
+const THRUST_ACCELERATION_FACTOR = 0.41; // How much stronger than gravity is the thrust? (e.g., 1.0 = hover, 1.5 = 50% more force) - **TUNE THIS**
 const ROCKET_THRUST_FORCE = EFFECTIVE_GRAVITY_MAGNITUDE * THRUST_ACCELERATION_FACTOR; // Total upward force when thrusting
 // const ROCKET_FALL_ACCELERATION = 0.5; // Less relevant now, gravity handles fall
 // const ROCKET_MAIN_THRUST = 0.9; // REMOVE or repurpose this (old impulse value)
@@ -164,6 +169,22 @@ const getRandomWindVector = (): THREE.Vector3 => {
     return new THREE.Vector3(windX, 0, windZ);
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
  
 
 // --- Components ---
@@ -173,20 +194,133 @@ const getRandomWindVector = (): THREE.Vector3 => {
  */
 const LandingFloor = () => {
   // Collider dimensions are half-extents (width/2, height/2, depth/2)
-  const floorColliderArgs: [number, number, number] = [32, FLOOR_HEIGHT / 2, 32];
+  const floorColliderArgs: [number, number, number] = [132, FLOOR_HEIGHT / 2+0.2, 132];
+
+  const [colorMap, displacementMap] = useTexture([
+    '/grass_diffuse.jpg', // Replace with your grass/ground texture path
+    '/terrain_heightmap.jpg', // Replace with your heightmap texture path
+  ]);
+  const textureRepeatFactor = 1; // How many times the texture tiles across the floor
+  [colorMap, displacementMap].forEach((texture) => {
+    if (texture) { // Check if texture loaded successfully
+        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(textureRepeatFactor, textureRepeatFactor);
+        texture.needsUpdate = true; // Ensure updates are applied
+    }
+  });
+  const floorWidth = 180;
+  const floorDepth = 450;
+  // Segments: More segments = smoother displacement, but higher GPU cost
+  const floorSegments = 1;
+  // Displacement Scale: Controls the intensity of the heightmap effect (how bumpy)
+  const displacementScaleFactor = 2.1; // Adjust this value to control hill height
+  // const floorColliderArgs: [number, number, number] = [floorWidth / 2, 1, floorDepth / 2]; // Half-extents (Width/2, Height/2, Depth/2) - Make it thicker
+  const colliderCenterYOffset = 0.1; // Center the collider slightly above PLATFORM_Y
 
   return (
-    // RigidBody is fixed, position matches the visual mesh center
-    <RigidBody type="fixed" position={[0, PLATFORM_Y, 0]} colliders={false} userData={{ type: 'floor' }}>
-      <CuboidCollider args={floorColliderArgs} />
-      <mesh receiveShadow name="floor">
-        {/* Geometry matches collider FULL size */}
-        <boxGeometry args={[64, FLOOR_HEIGHT, 64]} />
-        <meshStandardMaterial color="#613d36" metalness={4.8} roughness={2.3} />
+    // RigidBody remains fixed. Its position defines the base plane level.
+    <RigidBody
+      type="fixed"
+      position={[0-60, PLATFORM_Y-0.5, 0]} // Base Y level for the floor plane
+      colliders={false} // We define the collider manually below
+      userData={{ type: 'floor' }} // Keep identifying the floor
+    >
+      {/* Using Option A: Simplified Cuboid Collider */}
+      <CuboidCollider
+        args={floorColliderArgs}
+        // Position the collider relative to the RigidBody's origin
+        position={[+30, colliderCenterYOffset+1.05, 0]}
+        userData={{ isFloorCollider: true }} // Optional: more specific userData
+      />
+      {/* --- Visual Mesh --- */}
+      <mesh
+        receiveShadow // Allow the floor to receive shadows
+        name="landscapeFloor"
+        // Rotate the plane geometry so it's horizontal (lies flat on XZ plane)
+        rotation={[-Math.PI / 2, 0, 0]}
+        // Position relative to the RigidBody is [0,0,0] since rotation handles orientation
+      >
+        {/* Use PlaneGeometry instead of BoxGeometry */}
+        <planeGeometry args={[floorWidth, floorDepth, floorSegments, floorSegments]} />
+        {/* Material with textures */}
+        <meshStandardMaterial
+          map={colorMap} // Apply the color texture
+          displacementMap={displacementMap} // Apply the heightmap
+          displacementScale={displacementScaleFactor} // Control bumpiness
+          // Optional enhancements:
+          // normalMap={normalMap} // Add if you have a normal map for finer detail
+          // roughnessMap={roughnessMap} // Add if you have a roughness map
+          metalness={0.1} // Reduce metalness for ground
+          roughness={0.8} // Increase roughness for ground
+          side={THREE.DoubleSide} // Render both sides, useful for displaced planes
+        />
       </mesh>
     </RigidBody>
   );
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+// Define dimensions and position for the water plane
+const WATER_PLANE_WIDTH = 165; // From your original component
+const WATER_PLANE_DEPTH = 455; // From your original component
+
+// Position based on your original RigidBody placement, adjust Y level as desired
+const WATER_POSITION_X = 210;
+const WATER_POSITION_Z = 0;
+const WATER_LEVEL_Y = PLATFORM_Y; // Place it slightly below or at the platform base level
+
+/**
+ * Simple visual-only water plane component.
+ */
+const Waterfloor = () => {
+  return (
+    <mesh
+      // Position the center of the plane in the world
+      position={[WATER_POSITION_X-120, WATER_LEVEL_Y, WATER_POSITION_Z]}
+      // Rotate the plane geometry to be horizontal (flat on XZ)
+      rotation={[-Math.PI / 2, 0, 0]}
+      // Optionally receive shadows if other objects cast onto it
+      receiveShadow
+      name="simpleWaterSurface" // Give it a descriptive name
+    >
+      {/* Use simple PlaneGeometry, only 1x1 segments needed */}
+      <planeGeometry args={[WATER_PLANE_WIDTH, WATER_PLANE_DEPTH, 1, 1]} />
+      {/* Use a basic material with a blue color */}
+      <meshStandardMaterial
+        color="#4682B4" // A water-like blue color (SteelBlue) - adjust as needed
+        metalness={0.1}  // Low metalness for water look
+        roughness={1.3}  // Relatively smooth, adjust for desired shininess
+        // Optional: Add transparency for a better water effect
+        transparent={true}
+        opacity={0.9}
+        // side={THREE.DoubleSide} // Uncomment if the camera might go below the plane
+      />
+    </mesh>
+  );
+};
+
+ 
+
+
+
+
+
+
+
+
+
 
 
 
@@ -206,46 +340,534 @@ const LandingFloor = () => {
  */
 const LandingPlatform = () => {
   const platformCenterY = PLATFORM_Y + PLATFORM_HEIGHT / 2;
-  const platformPosition: [number, number, number] = [PLATFORM_CENTER_X, platformCenterY, PLATFORM_CENTER_Z];
+  const platformPosition: [number, number, number] = [PLATFORM_CENTER_X, platformCenterY+1, PLATFORM_CENTER_Z];
   // Collider dimensions are half-extents
   const platformColliderArgs: [number, number, number] = [PLATFORM_WIDTH / 2, PLATFORM_HEIGHT / 2, PLATFORM_DEPTH / 2];
 
-  return (
-    <RigidBody
-      type="fixed"
-      position={platformPosition}
-      colliders={false} // We define our own collider
-      userData={{ type: 'platform_tower' }} // Identify this body
-    >
-      {/* Define the physical shape */}
-      <CuboidCollider args={platformColliderArgs} />
 
-      {/* The visual mesh - its position is handled by the RigidBody */}
-      <mesh
-        receiveShadow
-        name="platform"
-        // UserData on mesh is less critical now, but can keep for other logic
-        userData={{
-            isLandingPlatform: true,
-            width: PLATFORM_WIDTH,
-            depth: PLATFORM_DEPTH,
-            height: PLATFORM_HEIGHT,
-            topY: PLATFORM_TOP_Y,
-            minX: PLATFORM_CENTER_X - PLATFORM_WIDTH / 2,
-            maxX: PLATFORM_CENTER_X + PLATFORM_WIDTH / 2,
-            minZ: PLATFORM_CENTER_Z - PLATFORM_DEPTH / 2,
-            maxZ: PLATFORM_CENTER_Z + PLATFORM_DEPTH / 2,
-        }}
+  const obj = useLoader(GLTFLoader, '/tower.glb'); // Or '/models/rocket.obj' etc.
+ // --- Recalculate Scale based on obj.scene ---
+ const modelScale = useMemo(() => {
+  // Check if obj and its scene are loaded
+  if (!obj || !obj.scene) return new THREE.Vector3(1, 1, 1);
+
+  // Clone the scene to avoid modifying the cached version directly for bounding box calculation
+  const scene = obj.scene.clone();
+  const box = new THREE.Box3().setFromObject(scene); // Use the loaded obj scene
+  const modelSize = box.getSize(new THREE.Vector3());
+
+  // Handle potential zero dimensions
+  if (modelSize.x === 0 || modelSize.y === 0 || modelSize.z === 0) {
+      console.warn("obj model has zero dimensions, using default scale.");
+      return new THREE.Vector3(1, 1, 1);
+  }
+
+  // Calculate scale factors (same logic as before)
+  const scaleX = PLATFORM_WIDTH / modelSize.x;
+  const scaleY = PLATFORM_HEIGHT / modelSize.y;
+  const scaleZ = PLATFORM_DEPTH / modelSize.z;
+
+  // Uniform scaling based on height is usually best
+  const uniformScaleFactor = scaleY;
+  return new THREE.Vector3(uniformScaleFactor, uniformScaleFactor, uniformScaleFactor);
+
+}, [obj]); // Recalculate only when obj data changes
+
+// --- Recalculate Visual Offset based on obj.scene ---
+const modelPositionOffset = useMemo(() => {
+  if (!obj || !obj.scene) return [0, 0, 0];
+
+  const scene = obj.scene.clone();
+  const box = new THREE.Box3().setFromObject(scene);
+  const modelSize = box.getSize(new THREE.Vector3());
+  // Use the calculated scale for the obj model
+  const scaledHeight = modelSize.y * modelScale.y;
+
+  // Assume origin is at the base (adjust if your obj origin is different)
+  return [0, -scaledHeight / 2, 0];
+
+}, [obj, modelScale]); // Recalculate if obj or scale changes
+
+// --- Apply Shadows to loaded obj meshes ---
+useEffect(() => {
+  if (obj && obj.scene) {
+    obj.scene.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.castShadow = true;
+        child.receiveShadow = true; // Allow parts of the tower to receive shadows
+      }
+    });
+  }
+}, [obj]); // Apply effect when obj data is available
+
+// --- Render ---
+// Suspense higher up should handle the loading state provided by useobj
+// Optional: Add explicit check if needed, though Suspense is preferred
+// if (!obj || !obj.scene) {
+//   console.warn("LandingPlatform: obj model not fully loaded yet.");
+//   return null; // Or a placeholder
+// }
+
+return (
+  <RigidBody
+    type="fixed"
+    position={platformPosition} // Physics body position remains the same
+    colliders={false} // Manual collider below
+    userData={{ type: 'platform_tower' }}
+  >
+    {/* 1. Physical Collider (Invisible) - Stays the same */}
+    <CuboidCollider args={platformColliderArgs} />
+
+    {/* 2. Visual Representation (Loaded obj Model) */}
+    {/*    Use <primitive> and pass the obj.scene */}
+    <primitive
+      object={obj.scene} // <-- Render the loaded scene graph
+      scale={modelScale}
+      position={modelPositionOffset} // Apply calculated offset
+      name="platformVisualModel"
+    />
+  </RigidBody>
+);
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const ROAD_POSITION_X = 0;
+// Set Y based on your ground level. If ground is at Y=0, maybe 0.01 to avoid z-fighting
+const ROAD_POSITION_Y = 0.01-0.2;
+const ROAD_POSITION_Z = 0;
+
+// If your road model isn't sized correctly in Blender, apply scale here.
+// Start with [1, 1, 1] if you sized it appropriately during modeling.
+const ROAD_SCALE_X = 1;
+const ROAD_SCALE_Y = 1;
+const ROAD_SCALE_Z = 1;
+
+// --- Road Component ---
+const StationRoad = () => {
+    // --- Constants ---
+    const roadPosition: [number, number, number] = [ROAD_POSITION_X, ROAD_POSITION_Y, ROAD_POSITION_Z];
+    // Use useMemo for the Vector3 to avoid recreating it on every render
+    const roadScale = useMemo(() => new THREE.Vector3(ROAD_SCALE_X, ROAD_SCALE_Y, ROAD_SCALE_Z), []);
+
+    // --- Load Model ---
+    const gltf = useLoader(GLTFLoader, '/buildings.glb'); // Make sure this path is correct!
+
+    // --- Render ---
+    // Wait until the GLTF is loaded
+    if (!gltf || !gltf.scene) {
+        // console.log("StationRoad: GLTF model not ready."); // Optional logging
+        return null; // Don't render anything yet
+    }
+
+    // Since there's no physics body, we use a simple group to position/scale the model
+    return (
+        <group
+            position={roadPosition}
+            scale={roadScale}
+            name="StationRoadVisual" // Helpful for debugging
+            // rotation={[0, /* Optional Y rotation */, 0]} // Add rotation if needed
+        >
+            {/* --- Visual Representation (Loaded Model) --- */}
+            {/* Render the loaded scene graph */}
+            {/* Clone the scene to ensure modifications (like adding to this group)
+                don't affect the cached model if it's used elsewhere. */}
+            <primitive object={gltf.scene.clone()} />
+        </group>
+    );
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const ARM_TARGET_HEIGHT = 2.0;
+const ARM_TARGET_WIDTH = 3.0;
+const ARM_TARGET_DEPTH = 0.6;
+ 
+const ROT_SPEED = Math.PI / 61; // 30° / sec
+
+const ARMS_POSITION_X = PLATFORM_CENTER_X + 0.5;
+const ARMS_POSITION_Y = 11 + PLATFORM_Y + ARM_TARGET_HEIGHT / 2;
+const ARMS_POSITION_Z = PLATFORM_CENTER_Z;
+
+const LandingArmsR: React.FC<{ isLanded: boolean }> = ({ isLanded }) => {
+    const armsPosition: [number, number, number] = [ARMS_POSITION_X, ARMS_POSITION_Y, ARMS_POSITION_Z];
+
+    // --- Load Model ---
+    // useLoader returns the GLTF structure which contains the scene graph
+    const gltf = useLoader(GLTFLoader, '/armR.glb');
+
+
+    const visualRef = useRef<THREE.Group>(null);
+
+    // rotate when landed
+    useFrame((_, dt) => {
+      if (isLanded && visualRef.current) {
+        visualRef.current.rotation.y = ROT_SPEED  ;
+      }
+    });
+
+
+    // --- Scaling ---
+    const modelScale = useMemo(() => {
+        // Use gltf.scene to calculate bounds
+        if (!gltf || !gltf.scene) return new THREE.Vector3(1, 1, 1);
+
+        // Clone the scene to avoid modifying the original loaded object when measuring
+        const sceneClone = gltf.scene.clone();
+        const box = new THREE.Box3().setFromObject(sceneClone);
+        const modelSize = box.getSize(new THREE.Vector3());
+
+        // Using your determined hardcoded scale:
+        return new THREE.Vector3(0.014, 0.014, 0.014);
+
+        // OR Calculate dynamically (ensure ARM_TARGET constants are correct & handle zero dimensions)
+        // const scaleX = modelSize.x > 1e-6 ? ARM_TARGET_WIDTH / modelSize.x : 1;
+        // const scaleY = modelSize.y > 1e-6 ? ARM_TARGET_HEIGHT / modelSize.y : 1;
+        // const scaleZ = modelSize.z > 1e-6 ? ARM_TARGET_DEPTH / modelSize.z : 1;
+        // Choose scaling strategy (uniform often preferred to avoid distortion)
+        // return new THREE.Vector3(scaleY, scaleY, scaleY); // Uniform based on height
+        // return new THREE.Vector3(scaleX, scaleY, scaleZ); // Non-uniform
+
+    }, [gltf]); // Recalculate only when gltf loads
+
+    // --- Visual Offset ---
+    const modelPositionOffset = useMemo(() => {
+        if (!gltf || !gltf.scene) return [0, 0, 0] as [number, number, number];
+
+        // Clone the scene to measure accurately after scaling
+        const sceneClone = gltf.scene.clone();
+        const box = new THREE.Box3().setFromObject(sceneClone);
+        const modelSize = box.getSize(new THREE.Vector3());
+        const scaledSize = modelSize.multiply(modelScale); // Size *after* applying modelScale
+
+        // *** IMPORTANT: Verify your model's origin point! ***
+        // Assumes origin is at the BASE CENTER of the model.
+        // If origin is at GEOMETRIC CENTER, use [0, 0, 0]
+        return [0, scaledSize.y / 2, 0] as [number, number, number];
+        // return [0, 0, 0]; // Use if origin is geometric center
+
+    }, [gltf, modelScale]); // Recalculate if gltf or scale changes
+
+    // --- Collider Geometry Args ---
+    const colliderArgs = useMemo(() => {
+        if (!gltf || !gltf.scene) return null;
+
+        const geometries: THREE.BufferGeometry[] = [];
+        // Traverse the actual scene graph from the loaded GLTF
+        gltf.scene.traverse((child) => {
+            // Ensure it's a Mesh with geometry
+            if (child instanceof THREE.Mesh && child.geometry) {
+                // NOTE: For simplicity, taking the first geometry found.
+                // For complex models with multiple meshes, you might need to merge geometries
+                // or use compound shapes for accurate colliders.
+                if (geometries.length === 0) {
+                    geometries.push(child.geometry);
+                }
+            }
+        });
+
+        if (geometries.length === 0) return null;
+
+        const geometry = geometries[0];
+        // Check for position attribute which holds vertices
+        if (!geometry || !geometry.attributes.position) return null;
+
+        // Get vertices and indices (indices needed for TrimeshCollider)
+        const vertices = geometry.attributes.position.array as Float32Array;
+        const indices = geometry.index?.array as Uint32Array | Uint16Array;
+
+        // Return data needed for Rapier colliders
+        // Note: These vertices are in the local space of the mesh within the GLTF.
+        // Scaling/offsetting is handled by the visual <group>, not applied here.
+        return { vertices, indices };
+
+    }, [gltf]); // Recalculate only when gltf loads
+
+    // --- Render ---
+    // Wait until the GLTF and collider data are ready
+    if (!gltf || !gltf.scene || !colliderArgs) {
+        // console.warn("LandingArmsR: GLTF model or collider geometry not ready.");
+        return null; // Don't render anything yet
+    }
+
+    return (
+        <RigidBody
+            type="fixed"
+            position={armsPosition}
+            colliders={false} // We define colliders manually below
+            userData={{ type: 'platform_arms' }}
+            name="LandingArmsPhysicsBody"
+        >
+            {/* --- Collider --- */}
+            {/* Choose ONE appropriate collider type */}
+
+            {/* Option 1: Convex Hull (Good balance) */}
+            {/* Uses vertices from the first mesh found 
+            <ConvexHullCollider args={[colliderArgs.vertices]} />   */}
+
+            {/* Option 2: Trimesh (Most accurate, higher CPU) */}
+            {/* Uses vertices AND indices from the first mesh found */}
+            {/* <TrimeshCollider args={[colliderArgs.vertices, colliderArgs.indices]} /> */}
+  
+            {/* Option 3: Cuboid(s) (Simplest physics, manual setup) */}
+            {/* Example:        */}
+          <CuboidCollider
+              args={[ARM_TARGET_WIDTH / 2-0.3, ARM_TARGET_HEIGHT / 3, ARM_TARGET_DEPTH / 2 ]}
+              // Position relative to RigidBody center (adjust if needed)
+              position={[0-2.2, 0+0.55, 0-1.24]}
+              rotation={[0, -Math.PI / 24, 0]} // Keep your desired rotation
+
+          />
+     
+           
+
+            {/* --- Visual Representation (Loaded Model) --- */}
+            {/* This group handles the scale and offset of the visual model */}
+            <group
+                 ref={visualRef} 
+                scale={modelScale}
+                position={modelPositionOffset} // Apply calculated offset
+                name="ArmsVisualModelContainer"
+                rotation={[0, -Math.PI / 24, 0]} // Keep your desired rotation
+            >
+                {/* Directly render the loaded scene using primitive */}
+                {/* The 'object' prop takes the THREE.Object3D (like gltf.scene) */}
+                <primitive object={gltf.scene} />
+            </group>
+
+            {/* Optional: Add Debug component during development */}
+            {/* <Debug /> */}
+        </RigidBody>
+    );
+};
+
+
+
+ 
+
+const LandingArmsL: React.FC<{ isLanded: boolean }> = ({ isLanded })  => {
+  const armsPosition: [number, number, number] = [ARMS_POSITION_X, ARMS_POSITION_Y, ARMS_POSITION_Z];
+
+  // --- Load Model ---
+  // useLoader returns the GLTF structure which contains the scene graph
+  const gltf = useLoader(GLTFLoader, '/armL.glb');
+
+
+  
+  const visualRef2 = useRef<THREE.Group>(null);
+
+  // rotate when landed
+  useFrame((_, dt) => {
+    if (isLanded && visualRef2.current) {
+      visualRef2.current.rotation.y = -ROT_SPEED  ;
+    }
+  });
+
+
+  // --- Scaling ---
+  const modelScale = useMemo(() => {
+      // Use gltf.scene to calculate bounds
+      if (!gltf || !gltf.scene) return new THREE.Vector3(1, 1, 1);
+
+      // Clone the scene to avoid modifying the original loaded object when measuring
+      const sceneClone = gltf.scene.clone();
+      const box = new THREE.Box3().setFromObject(sceneClone);
+      const modelSize = box.getSize(new THREE.Vector3());
+
+      // Using your determined hardcoded scale:
+      return new THREE.Vector3(0.14, 0.14, 0.14);
+
+      // OR Calculate dynamically (ensure ARM_TARGET constants are correct & handle zero dimensions)
+      // const scaleX = modelSize.x > 1e-6 ? ARM_TARGET_WIDTH / modelSize.x : 1;
+      // const scaleY = modelSize.y > 1e-6 ? ARM_TARGET_HEIGHT / modelSize.y : 1;
+      // const scaleZ = modelSize.z > 1e-6 ? ARM_TARGET_DEPTH / modelSize.z : 1;
+      // Choose scaling strategy (uniform often preferred to avoid distortion)
+      // return new THREE.Vector3(scaleY, scaleY, scaleY); // Uniform based on height
+      // return new THREE.Vector3(scaleX, scaleY, scaleZ); // Non-uniform
+
+  }, [gltf]); // Recalculate only when gltf loads
+
+  // --- Visual Offset ---
+  const modelPositionOffset = useMemo(() => {
+      if (!gltf || !gltf.scene) return [0, 0, 0] as [number, number, number];
+
+      // Clone the scene to measure accurately after scaling
+      const sceneClone = gltf.scene.clone();
+      const box = new THREE.Box3().setFromObject(sceneClone);
+      const modelSize = box.getSize(new THREE.Vector3());
+      const scaledSize = modelSize.multiply(modelScale); // Size *after* applying modelScale
+
+      // *** IMPORTANT: Verify your model's origin point! ***
+      // Assumes origin is at the BASE CENTER of the model.
+      // If origin is at GEOMETRIC CENTER, use [0, 0, 0]
+      return [0, scaledSize.y / 2, 0] as [number, number, number];
+      // return [0, 0, 0]; // Use if origin is geometric center
+
+  }, [gltf, modelScale]); // Recalculate if gltf or scale changes
+
+  // --- Collider Geometry Args ---
+  const colliderArgs = useMemo(() => {
+      if (!gltf || !gltf.scene) return null;
+
+      const geometries: THREE.BufferGeometry[] = [];
+      // Traverse the actual scene graph from the loaded GLTF
+      gltf.scene.traverse((child) => {
+          // Ensure it's a Mesh with geometry
+          if (child instanceof THREE.Mesh && child.geometry) {
+              // NOTE: For simplicity, taking the first geometry found.
+              // For complex models with multiple meshes, you might need to merge geometries
+              // or use compound shapes for accurate colliders.
+              if (geometries.length === 0) {
+                  geometries.push(child.geometry);
+              }
+          }
+      });
+
+      if (geometries.length === 0) return null;
+
+      const geometry = geometries[0];
+      // Check for position attribute which holds vertices
+      if (!geometry || !geometry.attributes.position) return null;
+
+      // Get vertices and indices (indices needed for TrimeshCollider)
+      const vertices = geometry.attributes.position.array as Float32Array;
+      const indices = geometry.index?.array as Uint32Array | Uint16Array;
+
+      // Return data needed for Rapier colliders
+      // Note: These vertices are in the local space of the mesh within the GLTF.
+      // Scaling/offsetting is handled by the visual <group>, not applied here.
+      return { vertices, indices };
+
+  }, [gltf]); // Recalculate only when gltf loads
+
+  // --- Render ---
+  // Wait until the GLTF and collider data are ready
+  if (!gltf || !gltf.scene || !colliderArgs) {
+      // console.warn("LandingArmsR: GLTF model or collider geometry not ready.");
+      return null; // Don't render anything yet
+  }
+
+  return (
+      <RigidBody
+          type="fixed"
+          position={armsPosition}
+          colliders={false} // We define colliders manually below
+          userData={{ type: 'platform_arms' }}
+          name="LandingArmsPhysicsBody"
       >
-        <boxGeometry args={[PLATFORM_WIDTH, PLATFORM_HEIGHT, PLATFORM_DEPTH]} />
-        <meshStandardMaterial color="darkblue" metalness={0.8} roughness={1.0}/>
-      </mesh>
-    </RigidBody>
+          {/* --- Collider --- */}
+          {/* Choose ONE appropriate collider type */}
+
+          {/* Option 1: Convex Hull (Good balance) */}
+          {/* Uses vertices from the first mesh found
+          <ConvexHullCollider args={[colliderArgs.vertices]} /> 
+
+          {/* Option 2: Trimesh (Most accurate, higher CPU) */}
+          {/* Uses vertices AND indices from the first mesh found */}
+          {/* <TrimeshCollider args={[colliderArgs.vertices, colliderArgs.indices]} /> */}
+
+          {/* Option 3: Cuboid(s) (Simplest physics, manual setup) */}
+          {/* Example:*/}
+          <CuboidCollider
+              args={[ARM_TARGET_WIDTH / 2-0.3, ARM_TARGET_HEIGHT / 3, ARM_TARGET_DEPTH / 2 ]}
+              // Position relative to RigidBody center (adjust if needed)
+              position={[0-2.2, 0+0.55, 0+1.24]}
+              rotation={[0, Math.PI / 24, 0]} // Keep your desired rotation
+
+          />
+          
+ 
+
+          {/* --- Visual Representation (Loaded Model) --- */}
+          {/* This group handles the scale and offset of the visual model */}
+          <group
+          ref={visualRef2} 
+              scale={modelScale}
+              position={modelPositionOffset} // Apply calculated offset
+              name="ArmsVisualModelContainer"
+              rotation={[0, Math.PI / 24, 0]} // Keep your desired rotation
+          >
+              {/* Directly render the loaded scene using primitive */}
+              {/* The 'object' prop takes the THREE.Object3D (like gltf.scene) */}
+              <primitive object={gltf.scene} />
+          </group>
+
+          {/* Optional: Add Debug component during development */}
+          {/* <Debug /> */}
+      </RigidBody>
   );
 };
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* 
 
 // --- PlatformArm1 ---
 // --- PlatformArm1 (Refactored) ---
@@ -390,43 +1012,40 @@ const PlatformArm2 = ({
 // Apply the EXACT SAME refactoring logic to PlatformArm2
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  
-
-/**
- * NEW: Capture Zone Visualizer Component
- * Renders a semi-transparent box representing the target landing volume.
  */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+  //  Capture Zone Visualizer Component
+ // Renders a semi-transparent box representing the target landing volume.
+ 
 const CaptureZoneVisualizer = () => {
     // The visualizer box should represent the entire vertical tolerance range.
     // Its height is therefore `CAPTURE_VERTICAL_TOLERANCE * 2`.
-    const visualizerHeight = CAPTURE_VERTICAL_TOLERANCE * 6; // 6.0
+    const visualizerHeight = 6.2; // 6.0
 
     // The box needs to be centered vertically at CAPTURE_TARGET_Y.
     const visualizerPosition = new THREE.Vector3(
-        PLATFORM_CENTER_X-1,
+        PLATFORM_CENTER_X-2,
         CAPTURE_TARGET_Y-3.8, // Center the visual box at the target Y
         PLATFORM_CENTER_Z
     );
@@ -437,8 +1056,8 @@ const CaptureZoneVisualizer = () => {
             <meshStandardMaterial
                 color="yellow" // Use a distinct color
                 transparent={true}
-                opacity={0.45} // Make it semi-transparent
-                depthWrite={false} // Optional: prevent writing to depth buffer if it causes Z-fighting
+                opacity={0.35} // Make it semi-transparent
+                depthWrite={true} // Optional: prevent writing to depth buffer if it causes Z-fighting
             />
         </mesh>
     );
@@ -447,6 +1066,10 @@ const CaptureZoneVisualizer = () => {
 
 
 
+/* 
+
+  
+ */
 
 
 
@@ -467,6 +1090,11 @@ const CaptureZoneVisualizer = () => {
 
 
 
+
+
+
+
+/* 
 
 const CUBE_SIZE = 1; // Size of each side of the cube
 const CUBE_GEOMETRY_ARGS = [CUBE_SIZE, CUBE_SIZE, CUBE_SIZE];
@@ -477,6 +1105,7 @@ const CUBE_MATERIAL_PROPS = {
     depthWrite: false, // Keep original material properties
 };
 const MAX_CUBES = 10;
+ */
 
 /**
  * Creates a vertical stack of semi-transparent cubes.
@@ -484,6 +1113,8 @@ const MAX_CUBES = 10;
  * @param {number} [props.count=5] - The number of cubes to stack (capped at 10).
  * @param {THREE.Vector3 | [number, number, number]} [props.position=[0, 0, 0]] - The base position for the bottom cube's center.
  */
+
+/* 
 const CubeStackVisualizer = ({ count = 5, position = [0, 0, 0] }) => {
     // Ensure count is an integer between 1 and MAX_CUBES
     const actualCount = Math.max(1, Math.min(MAX_CUBES, Math.floor(count)));
@@ -519,7 +1150,7 @@ const CubeStackVisualizer = ({ count = 5, position = [0, 0, 0] }) => {
         </group>
     );
 };
-
+ */
 
 
 
@@ -548,8 +1179,8 @@ const getRandomStartPosition = (): THREE.Vector3 => {
     const range = ROCKET_START_XZ_RANGE;
     const randomX = Math.random() * range * 2 - range;
     const randomZ = Math.random() * range * 2 - range;
-     return new THREE.Vector3(randomX, ROCKET_START_Y, randomZ);  
-   // return new THREE.Vector3(-2, 12, 1); // set to easy to start to debug
+     // return new THREE.Vector3(randomX, ROCKET_START_Y, randomZ);  
+   return new THREE.Vector3(-2, 13, 0); // set to easy to start to debug
 
 };
 
@@ -603,8 +1234,10 @@ function Loaderr() {
 
 
 
-
-const FallingRocket = ({ rocketName }: { rocketName: string }) => {
+/**
+ * main FallingRocket object that falls from sky with attached flame.
+ */
+const FallingRocket = ({ rocketName , isGameActive,  onLandedChange }: { rocketName: string, isGameActive: boolean,  onLandedChange: boolean }) => {
   // --- Refs ---
   const rocketApi = useRef<RapierRigidBody>(null!); // Ref for Rapier API
   const rocketRef = useRef<THREE.Mesh>(null!); // Ref for visual mesh (for tilt)
@@ -633,9 +1266,9 @@ const FallingRocket = ({ rocketName }: { rocketName: string }) => {
 
 
   const rocketColliderArgs: [number, number, number] = [
-      ROCKET_WIDTH / 2,
+      ROCKET_WIDTH / 2+0.16,
       ROCKET_HEIGHT / 2,
-      ROCKET_WIDTH / 2
+      ROCKET_WIDTH / 2+0.16
   ];
 
   // --- Calculate Box Geometry Args for the VISUAL bounding box ---
@@ -658,6 +1291,7 @@ const FallingRocket = ({ rocketName }: { rocketName: string }) => {
     flameOpacityRef.current = 0;
     if (flameRef.current) {
         flameRef.current.visible = false;
+
     }
 }, []);
 
@@ -668,6 +1302,14 @@ const FallingRocket = ({ rocketName }: { rocketName: string }) => {
   const setGameState = (newState: GameState) => {
     gameStateRef.current = newState;
     _setGameState(newState);
+    
+        // Call the parent callback when landing state changes
+        if (newState === 'landed') {
+          onLandedChange?.(true); // Rocket has landed
+      } else if (newState === 'playing' || newState === 'crashed') {
+           // If transitioning back to playing (e.g., reset) or crashed, it's not landed
+          onLandedChange?.(false);
+      }
   };
   // --- Rocket Visuals ---
   const rocketColor = gameState === 'landed' ? 'lime' : gameState === 'crashed' ? 'red' : '#ADD8E6';
@@ -704,10 +1346,7 @@ useEffect(() => {
 }, [obj, rocketColor, rocketEmissive, rocketMaterial]); // Re-run if these change
 
 
-
-  // --- Calculate Scale (Crucial Step!) ---
-  // You MUST adjust the scale to match your physics collider size (ROCKET_HEIGHT, ROCKET_WIDTH)
-// Inside FallingRocket component
+ 
 
 const modelScale = useMemo(() => {
   // *** ADD THIS CHECK ***
@@ -738,39 +1377,41 @@ const modelScale = useMemo(() => {
 
 
 
-  const handleCollision = (event: CollisionPayload) => {
-    // Only process collisions if playing or resetting (to allow snapping)
-    if (gameStateRef.current !== 'playing' && gameStateRef.current !== 'resetting') {
-         // If landed, ignore further collisions
-         if(gameStateRef.current === 'landed') return;
-         // If crashed, maybe ignore specific collisions if needed
-         // return;
-    }
+const handleCollision = (event: CollisionPayload) => {
+  // Only process collisions if playing or resetting
+  if (gameStateRef.current !== 'playing' && gameStateRef.current !== 'resetting') {
+       if(gameStateRef.current === 'landed') return;
+       // return; // Keep commented out unless needed for specific crash behavior
+  }
 
-    const otherUserData = event.other.collider.userData as { type?: string }; // More specific typing
+  // --- CHANGE HERE: Access the RigidBody's userData ---
+  // Use optional chaining (?.) for safety in case userData is missing
+  const otherUserData = event.other.rigidBody?.userData as { type?: string };
 
+  // Check if collided with floor, platform tower, or the platform arms
+  // --- CHANGE HERE: Match the RigidBody's userData type ---
+  if (otherUserData?.type === 'floor' || otherUserData?.type === 'platform_tower' || otherUserData?.type === 'platform_arms') {
+      // Prevent switching from landed to crashed
+      if (gameStateRef.current !== 'landed') {
+          setGameState('crashed');
+          // --- CHANGE HERE: Update message to match the type ---
+          setStatusMessage(`CRASHED on ${otherUserData.type}! Press R.`);
+          // Physics engine handles stopping/resting. Explicitly zeroing velocity is optional.
+           if (rocketApi.current) {
+               rocketApi.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+               rocketApi.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
+           }
+      }
+  }
+   // Add more specific collision logic if needed
+};
 
-
-    // Check if collided with floor, platform tower, or arms
-    if (otherUserData?.type === 'floor' || otherUserData?.type === 'platform_tower' || otherUserData?.type === 'arm') {
-        // Prevent switching from landed to crashed
-        if (gameStateRef.current !== 'landed') {
-            setGameState('crashed');
-            setStatusMessage(`CRASHED on ${otherUserData.type}! Press R.`);
-            // Physics engine handles stopping/resting, no need to snap manually here usually.
-            // We can explicitly zero velocity if we want an immediate stop on crash.
-             if (rocketApi.current) {
-                 rocketApi.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
-                 rocketApi.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
-             }
-        }
-    }
-     // Add more specific collision logic if needed (e.g., different sounds/effects)
-  };
 
 
 
   const resetGame = () => {
+    landedPositionRef.current = null;
+landedRotationRef.current = null;
     setGameState('resetting');
     const newStartPosition = getRandomStartPosition();
     const newWind = getRandomWindVector();
@@ -780,7 +1421,6 @@ const modelScale = useMemo(() => {
     setStatusMessage('');
 
     if (rocketApi.current) {
-        console.log("Resetting physics body...");
         // Teleport the rigid body to the start position
         rocketApi.current.setTranslation(newStartPosition, true);
         // Reset rotation
@@ -795,13 +1435,13 @@ const modelScale = useMemo(() => {
     }
 
     // Reset keys and wind *after* physics reset
-    keysPressed.current.clear();
+     //keysPressed.current.clear();
     windVector.current.copy(newWind);
 
     // Short delay before setting state back to playing allows physics state to settle
     setTimeout(() => {
       setGameState('playing');
-      console.log("Game reset complete.");
+       
     }, 50); // Increased delay slightly
   };
 
@@ -832,7 +1472,7 @@ const modelScale = useMemo(() => {
 
   // --- Create the Cockpit Camera ---
   const [cockpitCamera] = useState(() => {
-    const cam = new THREE.PerspectiveCamera(45, 1, 0.1, 20000);
+    const cam = new THREE.PerspectiveCamera(45, 1, 0.1, 33100);
     cam.name = COCKPIT_CAMERA_NAME;
     cam.position.set(0, ROCKET_CENTER_TO_TOP - 131.5, 0); // Position inside, near the top, looking forward
     cam.rotation.set(THREE.MathUtils.degToRad(0), THREE.MathUtils.degToRad( 0), THREE.MathUtils.degToRad(0)); // Slight downward tilt
@@ -857,7 +1497,7 @@ const modelScale = useMemo(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       // Prevent holding down key from firing continuously if not desired
       // (Set handles uniqueness automatically)
-        
+      if (!isGameActive) return; 
        keysPressed.current.add(event.key);
 
       // Handle Reset Key directly here
@@ -879,29 +1519,35 @@ const modelScale = useMemo(() => {
 
     // Cleanup listeners on component unmount
     return () => {
-      console.log("Removing key listeners");
+   
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       keysPressed.current.clear(); // Clear keys on unmount/cleanup
     };
-  }, [resetGame]);
+  }, [resetGame, isGameActive]);
 
 
 
-
-
-
+////////////////                     ////////////////
+//////////////   useFrame        ////////////////
+/////////////                 ////////////////
   const wasThrustingRef = useRef(false);
 
+  const landedPositionRef = useRef<{ x: number, y: number, z: number } | null>(null);
+const landedRotationRef = useRef<{ x: number, y: number, z: number, w: number } | null>(null);
+
+
   useFrame((state, delta) => {
-    if (!rocketApi.current || !rocketRef.current || gameStateRef.current === 'resetting') return;
+    if (!isGameActive || !rocketApi.current || !rocketRef.current || gameStateRef.current === 'resetting') 
+  { 
+    return;}
 
     const dt = Math.min(delta, 0.05); // Clamp delta time
     const isPlaying = gameStateRef.current === 'playing';
     const isThrusting = isPlaying && keysPressed.current.has(THRUST_KEY);
   
     // --- Handle Flame Visibility ---
-    const fadeSpeed = 3.0;
+    const fadeSpeed = 0.8;
     if (isThrusting) {
       flameOpacityRef.current = 1;
     } else {
@@ -910,6 +1556,7 @@ const modelScale = useMemo(() => {
     if (flameRef.current) {
       flameRef.current.visible = flameOpacityRef.current > 0.01;
     }
+    console.log(  flameRef.current.visible, "---flameRef.current.visible ");
   
     // --- Apply Forces if Playing ---
     if (isPlaying) {
@@ -917,7 +1564,7 @@ const modelScale = useMemo(() => {
       const force = { x: 0, y: 0, z: 0 }; // Use force vector
   
       // Apply Thrust Force
-      if (isThrusting) {
+      if (isThrusting ) {
         force.y += ROCKET_THRUST_FORCE; // Apply thrust force
       } else {
         // Apply gravity when not thrusting
@@ -977,34 +1624,50 @@ const modelScale = useMemo(() => {
     const currentPosition = body.translation(); // Get position from physics
     let isInCaptureZone = false;
     const isInVerticalZone = currentPosition.y >= CAPTURE_ZONE_MIN_Y && currentPosition.y <= CAPTURE_ZONE_MAX_Y;
-
     if (isInVerticalZone) {
-      const isInHorizontalZoneX = Math.abs(currentPosition.x - (PLATFORM_CENTER_X - 1)) <= CAPTURE_ZONE_WIDTH / 2;
+      
+      const isInHorizontalZoneX = Math.abs(currentPosition.x - (PLATFORM_CENTER_X - 2)) <= CAPTURE_ZONE_WIDTH / 2;
       const isInHorizontalZoneZ = Math.abs(currentPosition.z - PLATFORM_CENTER_Z) <= CAPTURE_ZONE_DEPTH / 2;
       // TODO: Add speed/tilt checks using physics body data (linvel, angvel, rotation)
+      //   console.log(isInHorizontalZoneX, "isInHorizontalZoneX"  );
+      //   console.log( isInHorizontalZoneZ, "isInHorizontalZoneZ");
+
       const currentLinVel = body.linvel(); // Re-fetch if needed after clamping - Now safe to fetch here
       // const verticalSpeedOK = Math.abs(currentLinVel.y) <= MAX_LANDING_SPEED_VERTICAL;
       // const horizontalSpeedOK = Math.sqrt(currentLinVel.x**2 + currentLinVel.z**2) <= MAX_LANDING_SPEED_HORIZONTAL;
       // Check tilt using body.rotation() quaternion
 
       const conditionsMet = isInHorizontalZoneX && isInHorizontalZoneZ; // Add other conditions here
+      //   console.log(conditionsMet, "conditions MET");
 
       if (conditionsMet) {
-          isInCaptureZone = true;
-          timeInCaptureZoneRef.current += dt;
-          setStatusMessage(`In capture zone... ${timeInCaptureZoneRef.current.toFixed(1)} / ${REQUIRED_CAPTURE_TIME.toFixed(1)}s`);
+      console.log(  gameStateRef.current, "gameStateRef.current ");
 
-          if (timeInCaptureZoneRef.current >= REQUIRED_CAPTURE_TIME) {
-              console.log("SUCCESSFUL CAPTURE");
-              setGameState('landed');
-              setStatusMessage(`Captured! Press R.`);
-              // Snap physics body (setLinvel is OK here for an instantaneous stop)
-              body.setTranslation({ x: PLATFORM_CENTER_X - 1, y: CAPTURE_TARGET_Y - 3.8, z: PLATFORM_CENTER_Z }, true);
-              body.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
-              body.setLinvel({ x: 0, y: 0, z: 0 }, true);
-              body.setAngvel({ x: 0, y: 0, z: 0 }, true);
-              // Optionally change body type to kinematic/fixed
-          }
+        isInCaptureZone = true;
+        timeInCaptureZoneRef.current += dt;
+        setStatusMessage(`In capture zone... ${timeInCaptureZoneRef.current.toFixed(1)} / ${REQUIRED_CAPTURE_TIME.toFixed(1)}s`);
+      console.log(  timeInCaptureZoneRef.current, "timeInCaptureZoneRef.current ");
+      console.log(  isThrusting, "--      isThrusting      --  ");
+
+    
+        if (timeInCaptureZoneRef.current >= REQUIRED_CAPTURE_TIME) {
+          console.log("SUCCESSFUL CAPTURE");
+          
+          // Important: First set the game state to 'landed' before modifying physics
+
+          
+    // Snap and freeze the rocket at the landing spot
+    const snapPos = { x: PLATFORM_CENTER_X - 2, y: CAPTURE_TARGET_Y - 4.61, z: PLATFORM_CENTER_Z };
+    const snapRot = { x: 0, y: 0, z: 0, w: 1 };
+    rocketApi.current.setTranslation(snapPos, true);
+    rocketApi.current.setRotation(snapRot, true);
+    landedPositionRef.current = snapPos;
+    landedRotationRef.current = snapRot;
+    rocketApi.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    rocketApi.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    setGameState('landed');
+    setStatusMessage(`Captured! Press R.`);
+        }
       }
   }
 
@@ -1029,12 +1692,25 @@ const modelScale = useMemo(() => {
  // No change needed here, the physics engine should bring it to rest
  // due to damping or being snapped in the capture zone logic.
 }
+
+
+if (gameStateRef.current === 'landed' && rocketApi.current && landedPositionRef.current && landedRotationRef.current) {
+  rocketApi.current.setTranslation(landedPositionRef.current, true);
+  rocketApi.current.setRotation(landedRotationRef.current, true);
+  rocketApi.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+  rocketApi.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
+}
+
 });
 
-
+ 
 
 
  
+
+
+
+
 
   const colliderHalfHeight = ROCKET_HEIGHT / 2;
   return (
@@ -1062,16 +1738,16 @@ const modelScale = useMemo(() => {
       {/* 2. Visual Mesh for the Bounding Box */}
       {/* This mesh uses the FULL dimensions derived from the collider args */}
       {/* It's placed inside the RigidBody, so it automatically follows its position/rotation */}
-      <mesh name="physicsBoundingBoxVisualizer">
-        <boxGeometry args={visualBoundingBoxArgs} />
-        <meshBasicMaterial
-            color="lime"      // Bright color for visibility
-            wireframe={true}  // Show as wireframe to see the model inside
-            transparent={true} // Allow seeing through
-            opacity={0.6}     // Make it semi-transparent
-            depthWrite={false}// Optional: Prevents potential z-fighting issues
-        />
-      </mesh>
+      {/*<mesh name="physicsBoundingBoxVisualizer">*/}
+       {/* <boxGeometry args={visualBoundingBoxArgs} />*/}
+       {/* <meshBasicMaterial*/}
+       {/*     color="lime"      // Bright color for visibility*/}
+       {/*     wireframe={true}  // Show as wireframe to see the model inside*/}
+       {/*     transparent={true} // Allow seeing through*/}
+       {/*     opacity={0.6}     // Make it semi-transparent*/}
+       {/*     depthWrite={false}// Optional: Prevents potential z-fighting issues*/}
+       {/*  />*/}
+       {/*</mesh>*/}
       {/* ---------------------------------- */}
 
 
@@ -1102,11 +1778,11 @@ const modelScale = useMemo(() => {
                   ref={flameRef}
                   // Example: Position below the calculated center point after scaling
                   position={[0, -colliderHalfHeight  , 0]} // ADJUST THIS Y VALUE!
-                  particleCount={1500}
+                  particleCount={4150}
                    
                   flameHeight={5.5}
-                  emitterRadius={0.2}
-                  particleSize={0.18}
+                  emitterRadius={0.3}
+                  particleSize={0.11}
                   colorStart={new THREE.Color(0xff2a00)}
                   colorEnd={new THREE.Color(0xfff600)}
                   opacityRef={flameOpacityRef}
@@ -1155,11 +1831,7 @@ const modelScale = useMemo(() => {
 
 
 
-
-
-/**
- * Component responsible for handling the multi-viewport rendering
- */
+ 
 
 
 
@@ -1195,6 +1867,19 @@ const CockpitCameraUpdater = ({ rocketName, cameraName }: { rocketName: string, 
 
   return null; // This component doesn't render anything itself
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1252,7 +1937,7 @@ const MultiViewRenderer = () => {
 
     // Render Stationary Camera View
     if (stationaryCam) {
-      const stationaryViewport = { x: pipViewport.x , y: pipViewport.y -450, width: pipWidth, height: pipHeight }; // Adjust position as needed
+      const stationaryViewport = { x: pipViewport.x , y: pipViewport.y -300, width: pipWidth, height: pipHeight }; // Adjust position as needed
       stationaryCam.aspect = stationaryViewport.width / stationaryViewport.height;
       stationaryCam.updateProjectionMatrix();
 
@@ -1327,41 +2012,113 @@ function CockpitCameraDebugger() {
 
 
 
+
+
+
+
+
+
+
+
+
 /**
  * Main Scene Component
  */
 const RocketLandingScene = () => {
 
+  const [isGameStarted, setIsGameStarted] = useState(true);
+  const [isRocketLanded, setIsRocketLanded] = useState(false);
+
   const [stationaryCamera] = useState(() => {
     const cam = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
     cam.name = STATIONARY_CAMERA_NAME;
-    cam.position.set(1, -1, 0); // Position the camera
-    cam.lookAt(new THREE.Vector3(-2, PLATFORM_TOP_Y, 0.5)); // Look at the platform
+    cam.position.set(2, -1.3, -1); // Position the camera
+    cam.lookAt(new THREE.Vector3(-2.5, PLATFORM_TOP_Y, 0.5)); // Look at the platform
     return cam;
   });
-
-
-
-  const rocketBodyHeight = 8;
-  const rocketBodyRadius = 0.5;
-  const flameEmitterY = -rocketBodyHeight / 2; // Position flame below the body
-  const pipViewRef = useRef<HTMLDivElement>(null!);
+ 
   const worldGravity: [number, number, number] = [0, -9.81 * 0.8, 0]; // Example: Slightly less than Earth gravity
 
-  const [deployArms, setDeployArms] = useState(false); // State to control arm deployment
+  const handleLandedChange = React.useCallback((landed: boolean) => {
+     
+    setIsRocketLanded(landed);
+}, []); // Empty dependency array means this function identity is stable
 
+  const handleStartGame = () => {
+    setIsGameStarted(true);
+  };
 
-
- 
-
-
-  // NOTE: Game state is currently managed within FallingRocket.
+   // NOTE: Game state is currently managed within FallingRocket.
   // Consider lifting state up here if more components need it.
   // const [gameState, setGameState] = useState<GameState>('playing');
   // const [statusMessage, setStatusMessage] = useState<string>('');
 
-  return (
+  const InitialPopup = () => (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+ 
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 1000, // Ensure it's above the canvas
+      color: 'white',
+      fontFamily: 'sans-serif',
+    }}>
+      <div style={{
+        backgroundColor: '#282c34', // Dark background for the modal content
+        padding: '30px',
+        borderRadius: '10px',
+        textAlign: 'center',
+        boxShadow: '0 5px 15px rgba(0,0,0,0.3)',
+        maxWidth: '500px', // Max width for the popup
+      }}>
+        <h2>Welcome to Rocket Lander!</h2>
+        {/* Replace with your actual image path in the public folder */}
+        <img
+          src="/rocket_lander_logo.png" // <<<--- CHANGE THIS TO YOUR IMAGE PATH
+          alt="Rocket Lander"
+          style={{ maxWidth: '80%', height: 'auto', margin: '20px 0', borderRadius: '5px' }}
+        />
+        <p style={{ marginBottom: '25px', lineHeight: '1.5' }}>
+          Prepare for a challenging landing sequence. Use your thrusters carefully
+          to guide the booster onto the catch tower. Good luck!
+        </p>
+        <button
+          onClick={handleStartGame}
+          style={{
+            padding: '12px 25px',
+            fontSize: '18px',
+            cursor: 'pointer',
+            backgroundColor: '#61dafb', // React-like blue
+            color: '#282c34',
+            border: 'none',
+            borderRadius: '5px',
+            fontWeight: 'bold',
+            transition: 'background-color 0.2s ease',
+          }}
+          onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#50c3e0'}
+          onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#61dafb'}
+        >
+          Start Simulation
+        </button>
+      </div>
+    </div>
+  );
 
+
+  const sendReset = React.useCallback(() => {
+    /* simulate “R” key which your rocket already listens to */
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "r" }));
+  }, []);
+
+
+  return (
+ 
+         <>
 <Canvas
       style={{ 
         position: 'fixed', // Position it relative to the viewport
@@ -1369,7 +2126,7 @@ const RocketLandingScene = () => {
         left: 0,
         width: '100%',    // Fill the width of the viewport
         height: '100%',   // Fill the height of the viewport
-        background: '#aaB266',
+        background: 'linear-gradient(to bottom,rgb(250, 190, 101) 20%,rgb(112, 168, 228) 100%)',
         touchAction: 'none' 
       
       }}
@@ -1377,11 +2134,17 @@ const RocketLandingScene = () => {
       // Disable default rendering loop if using custom MultiViewRenderer that handles it
       // frameloop="demand" // Or manage manually if MultiViewRenderer isn't rendering every frame
     >
+  {/*
+    <fog attach="fog" args={['#abcdef', 50, 170]} />
+    */}    
+  
         {/* Main Camera */}
         <PerspectiveCamera
             makeDefault
             position={[-21, 11, 40]} // Adjusted position slightly for better view of tall platform
-  
+            near={0.1} // Default near clipping plane - good practice to specify
+ 
+            far={250} 
             // Optional: Adjust frustum bounds if needed for aspect ratio
             // left={-aspect * frustumSize / 2}
             // right={aspect * frustumSize / 2}
@@ -1390,25 +2153,7 @@ const RocketLandingScene = () => {
         />
 
 <primitive object={stationaryCamera} />
-
-
-
-
-{/* <Flame
-  position={[0, 12, 0]} // Emitter position
-  particleCount={800}             // More particles = denser flame
-  flameHeight={7}                 // How long the plume is
-  emitterRadius={0.3}             // Width at the nozzle
-  particleSize={2.2}              // Adjust particle size2
-  colorStart={new THREE.Color(0xfff0b0)} // Brighter core
-  colorEnd={new THREE.Color(0xff6600)}   // Orange/red edges
-  opacity={0.7}
-/> */}
-
-
-
-
-
+ 
 <AxesHelperComponent size={1} /> {/* Adjust size as needed */}
       {/* Lighting */}
       <ambientLight intensity={0.5} />
@@ -1426,31 +2171,53 @@ const RocketLandingScene = () => {
         />
               <directionalLight position={[-5, -5, -5]} intensity={0.2} />
               <CockpitCameraUpdater rocketName={ROCKET_MESH_NAME} cameraName={COCKPIT_CAMERA_NAME} />
-              <CockpitCameraDebugger />
+             {/*  <CockpitCameraDebugger /> */}
 
-              <Physics gravity={worldGravity} >
+              <Physics gravity={worldGravity}    debug   paused={!isGameStarted}>
+              
       {/* Scene Content */}
       <Suspense fallback={null}>
-        <LandingPlatform />
+
+        {/* */}
+        <LandingPlatform /> 
+
+        <LandingArmsL  isLanded={isRocketLanded}/>
+        <LandingArmsR isLanded={isRocketLanded}/>
+        <StationRoad/>
+        {/*
         <PlatformArm1 />
-        <PlatformArm2 />
+        <PlatformArm2 /> 
+        */}
 
         
-        {/* Add the capture zone visualizer */}
-        <CaptureZoneVisualizer />
-        < CubeStackVisualizer/>
-        <FallingRocket rocketName={ROCKET_MESH_NAME} /> {/* Contains game state logic */}
+        {/* Add the capture zone visualizer 
+        <CaptureZoneVisualizer />           */}
+        {/* < CubeStackVisualizer/>*/}
+        <FallingRocket  onLandedChange={handleLandedChange} rocketName={ROCKET_MESH_NAME } isGameActive={isGameStarted} /> {/* Contains game state logic */}
         <LandingFloor/>
+        < Waterfloor/>
         {/* <Text> component could be added here for status messages if state is lifted */}
       </Suspense>
       </Physics>
       {/* Controls */}
       <OrbitControls enableRotate={true} enablePan={true} enableZoom={true} />
-
       {/* Custom Renderer for PiP */}
       <MultiViewRenderer />
 
+       {/*
+       <RotatingCamera active={isRocketLanded} />
+        */}
+
     </Canvas>
+      <InstructionsUI />
+      <WinDrawer open={isRocketLanded} onRestart={sendReset} />
+
+      
+
+
+
+      {!isGameStarted && <InitialPopup />}
+     </>
   );
 };
 

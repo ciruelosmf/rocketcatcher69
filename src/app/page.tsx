@@ -1213,7 +1213,7 @@ const getRandomStartPosition = (): THREE.Vector3 => {
 
 
 
-function Loaderr() {
+function Loader() {
   const { progress } = useProgress();
   return <Text>{`Loading Model: ${progress.toFixed(0)}%`}</Text>; // Basic text loader
 }
@@ -2099,7 +2099,7 @@ function CockpitCameraDebugger() {
  */
 const RocketLandingScene = () => {
 
-  const [isGameStarted, setIsGameStarted] = useState(true);
+  const [isGameStarted, setIsGameStarted] = useState(false);
   const [isRocketLanded, setIsRocketLanded] = useState(false);
   const [isRocketCrashed, setIsRocketCrashed] = useState(false); 
   const [stationaryCamera] = useState(() => {
@@ -2258,7 +2258,7 @@ const RocketLandingScene = () => {
               <Physics gravity={worldGravity}        paused={!isGameStarted}>
               
       {/* Scene Content */}
-      <Suspense fallback={null}>
+      <Suspense fallback={<Loader />}>
 
         {/* */}
         <LandingPlatform /> 

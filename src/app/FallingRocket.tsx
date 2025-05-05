@@ -476,32 +476,37 @@ const modelScale = useMemo(() => {
 
 
 const handleCollision = (event: CollisionPayload) => {
-  // Only process collisions if playing or resetting
-  if (gameStateRef.current !== 'playing' && gameStateRef.current !== 'resetting') {
-       if(gameStateRef.current === 'landed') return;
-       // return; // Keep commented out unless needed for specific crash behavior
-  }
+  const currentGameState = gameStateRef.current; // Get current state for checks
 
-  // --- CHANGE HERE: Access the RigidBody's userData ---
-  // Use optional chaining (?.) for safety in case userData is missing
-  const otherUserData = event.other.rigidBody?.userData as { type?: string };
+  // --- PRIMARY CHECK: Only detect crashes when actively playing ---
+  if (currentGameState === 'playing') {
+      const otherUserData = event.other.rigidBody?.userData as { type?: string };
 
-  // Check if collided with floor, platform tower, or the platform arms
-  // --- CHANGE HERE: Match the RigidBody's userData type ---
-  if (otherUserData?.type === 'floor' || otherUserData?.type === 'platform_tower' || otherUserData?.type === 'platform_arms') {
-      // Prevent switching from landed to crashed
-      if (gameStateRef.current !== 'landed') {
+      // Check if the collided object is one that causes a crash
+      const isCrashSurface = otherUserData?.type === 'floor' ||
+                             otherUserData?.type === 'platform_tower' ||
+                             otherUserData?.type === 'platform_arms';
+
+      if (isCrashSurface) {
+          // We were playing and hit a crash surface -> transition to crashed state
           setGameState('crashed');
-          // --- CHANGE HERE: Update message to match the type ---
           setStatusMessage(`CRASHED on ${otherUserData.type}! Press R.`);
-          // Physics engine handles stopping/resting. Explicitly zeroing velocity is optional.
-           if (rocketApi.current) {
-               rocketApi.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
-               rocketApi.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
-           }
+
+          // Stop the rocket immediately upon crash
+          if (rocketApi.current) {
+              rocketApi.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+              rocketApi.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
+          }
       }
+      // If playing and collided with something else (e.g., another dynamic object if added later),
+      // do nothing specific here, let physics handle it.
+
+  } else {
+      // If the state is 'landed', 'crashed', or 'resetting', we generally
+      // don't need to do anything special on further collisions.
+      // console.log(`Collision ignored in state: ${currentGameState}`); // Optional for debugging
+      return;
   }
-   // Add more specific collision logic if needed
 };
 
 

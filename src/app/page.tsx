@@ -235,7 +235,7 @@ const LandingFloor = () => {
         args={floorColliderArgs}
         // Position the collider relative to the RigidBody's origin
         position={[+30, colliderCenterYOffset+1.05, 0]}
-        userData={{ isFloorCollider: true }} // Optional: more specific userData
+          // userData={{ isFloorCollider: true }} // Optional: more specific userData
       />
       {/* --- Visual Mesh --- */}
       <mesh

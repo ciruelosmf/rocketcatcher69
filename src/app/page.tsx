@@ -1864,7 +1864,7 @@ function CockpitCameraDebugger() {
  */
 const RocketLandingScene = () => {
 
-  const [isGameStarted, setIsGameStarted] = useState(true);
+  const [isGameStarted, setIsGameStarted] = useState(false);
   const [isRocketLanded, setIsRocketLanded] = useState(false);
   const [isRocketCrashed, setIsRocketCrashed] = useState(false); 
   const [stationaryCamera] = useState(() => {

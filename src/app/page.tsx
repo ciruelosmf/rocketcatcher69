@@ -162,7 +162,7 @@ const MIN_THRUST_FACTOR = THRUST_ACCELERATION_FACTOR; // Minimum is the base fac
 
 
 // Wind
-const WIND_MAX_STRENGTH = 0.001; // 0 orginal
+const WIND_MAX_STRENGTH = 0.01; // 0 orginal 0.001;
 const getRandomWindVector = (): THREE.Vector3 => {
     const angle = Math.random() * Math.PI * 2;
     const strength = Math.random() * WIND_MAX_STRENGTH;
@@ -199,8 +199,8 @@ const LandingFloor = () => {
   const floorColliderArgs: [number, number, number] = [132, FLOOR_HEIGHT / 2+0.2, 132];
 
   const [colorMap, displacementMap] = useTexture([
-    '/grass_diffuse.jpg', // Replace with your grass/ground texture path
-    '/terrain_heightmap.jpg', // Replace with your heightmap texture path
+    '/grass_diffuse.webp', // Replace with your grass/ground texture path
+ 
   ]);
   const textureRepeatFactor = 1; // How many times the texture tiles across the floor
   [colorMap, displacementMap].forEach((texture) => {
@@ -226,7 +226,7 @@ const LandingFloor = () => {
     // RigidBody remains fixed. Its position defines the base plane level.
     <RigidBody
       type="fixed"
-      position={[0-60, PLATFORM_Y-0.5, 0]} // Base Y level for the floor plane
+      position={[0-60, PLATFORM_Y+1.0, 0]} // Base Y level for the floor plane
       colliders={false} // We define the collider manually below
       userData={{ type: 'floor' }} // Keep identifying the floor
     >
@@ -234,7 +234,7 @@ const LandingFloor = () => {
       <CuboidCollider
         args={floorColliderArgs}
         // Position the collider relative to the RigidBody's origin
-        position={[+30, colliderCenterYOffset+1.05, 0]}
+        position={[+30, colliderCenterYOffset, 0]}
           // userData={{ isFloorCollider: true }} // Optional: more specific userData
       />
       {/* --- Visual Mesh --- */}
@@ -264,6 +264,75 @@ const LandingFloor = () => {
   );
 };
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const LandingFloor3 = () => {
+  // --- Load Texture ---
+  // useTexture returns the texture directly when given a single URL string
+  const colorMap = useTexture('/w.webp'); // Path to your desired texture
+
+  // --- Configure Texture ---
+  const textureRepeatFactor = 1; // How many times the texture tiles across the floor
+  if (colorMap) { // Check if texture loaded successfully
+    colorMap.wrapS = colorMap.wrapT = THREE.RepeatWrapping;
+    colorMap.repeat.set(textureRepeatFactor, textureRepeatFactor);
+    colorMap.needsUpdate = true; // Ensure updates are applied
+  }
+
+  // --- Define Visual Geometry Dimensions ---
+  const floorWidth = 180;
+  const floorDepth = 450;
+  // Segments: 1x1 is enough for a flat plane without displacement
+  const floorSegments = 1;
+
+  // --- Define Visual Position & Rotation ---
+  // Use the world position that the original RigidBody had
+  const meshPosition: [number, number, number] = [110, PLATFORM_Y + 0.95, 0];
+  // Use the rotation the original mesh had to make it horizontal
+  const meshRotation: [number, number, number] = [-Math.PI / 2, 0, 0];
+
+  return (
+    // --- Visual Mesh ---
+    // Apply position and rotation directly to the mesh
+    <mesh
+      position={meshPosition}
+      rotation={meshRotation}
+      receiveShadow // Allow the floor to receive shadows if needed
+      name="simpleVisualFloor" // Descriptive name
+    >
+      {/* Use PlaneGeometry */}
+      <planeGeometry args={[floorWidth, floorDepth, floorSegments, floorSegments]} />
+      {/* Simple Material with just the color map */}
+      <meshStandardMaterial
+        map={colorMap} // Apply the color texture
+        metalness={0.1} // Adjust as needed for appearance
+        roughness={0.8} // Adjust as needed for appearance
+        side={THREE.DoubleSide} // Render both sides if the camera might go below
+        // Removed displacementMap and displacementScale properties
+      />
+    </mesh>
+  );
+ 
+};
 
 
 
@@ -1184,8 +1253,8 @@ const getRandomStartPosition = (): THREE.Vector3 => {
     const range = ROCKET_START_XZ_RANGE;
     const randomX = Math.random() * range * 2 - range;
     const randomZ = Math.random() * range * 2 - range;
-     // return new THREE.Vector3(randomX, ROCKET_START_Y, randomZ);  
-   return new THREE.Vector3(-2, 13, 0); // set to easy to start to debug
+      return new THREE.Vector3(randomX, ROCKET_START_Y, randomZ);  
+   // return new THREE.Vector3(-2, 13, 0); // set to easy to start to debug
 
 };
 
@@ -1585,7 +1654,6 @@ const handleCollision = (event: CollisionPayload) => {
 
     const handleKeyUp = (event: KeyboardEvent) => {
       if (event.key === THRUST_KEY) { // Check specifically for space
-        console.log("Spacebar UP detected");
     }
       keysPressed.current.delete(event.key);
     };
@@ -1633,7 +1701,6 @@ const landedRotationRef = useRef<{ x: number, y: number, z: number, w: number } 
     if (flameRef.current) {
       flameRef.current.visible = flameOpacityRef.current > 0.01;
     }
-    console.log(  flameRef.current.visible, "---flameRef.current.visible ");
   
     // --- Apply Forces if Playing ---
     if (isPlaying) {
@@ -1718,17 +1785,13 @@ const landedRotationRef = useRef<{ x: number, y: number, z: number, w: number } 
       //   console.log(conditionsMet, "conditions MET");
 
       if (conditionsMet) {
-      console.log(  gameStateRef.current, "gameStateRef.current ");
 
         isInCaptureZone = true;
         timeInCaptureZoneRef.current += dt;
         setStatusMessage(`In capture zone... ${timeInCaptureZoneRef.current.toFixed(1)} / ${REQUIRED_CAPTURE_TIME.toFixed(1)}s`);
-      console.log(  timeInCaptureZoneRef.current, "timeInCaptureZoneRef.current ");
-      console.log(  isThrusting, "--      isThrusting      --  ");
 
     
         if (timeInCaptureZoneRef.current >= REQUIRED_CAPTURE_TIME) {
-          console.log("SUCCESSFUL CAPTURE");
           
           // Important: First set the game state to 'landed' before modifying physics
 
@@ -2104,7 +2167,7 @@ function CockpitCameraDebugger() {
  */
 const RocketLandingScene = () => {
 
-  const [isGameStarted, setIsGameStarted] = useState(false);
+  const [isGameStarted, setIsGameStarted] = useState(true);
   const [isRocketLanded, setIsRocketLanded] = useState(false);
   const [isRocketCrashed, setIsRocketCrashed] = useState(false); 
   const [stationaryCamera] = useState(() => {
@@ -2259,7 +2322,7 @@ const RocketLandingScene = () => {
               <CockpitCameraUpdater rocketName={ROCKET_MESH_NAME} cameraName={COCKPIT_CAMERA_NAME} />
              {/*  <CockpitCameraDebugger /> */}
 
-              <Physics gravity={worldGravity}        paused={!isGameStarted}>
+              <Physics gravity={worldGravity}    debug    paused={!isGameStarted}>
               
       {/* Scene Content */}
       <Suspense fallback={<Loader />}>
@@ -2281,8 +2344,12 @@ const RocketLandingScene = () => {
         {/* < CubeStackVisualizer/>*/}
         <FallingRocket   onCrashedChange={handleCrashedChange}  onLandedChange={handleLandedChange} rocketName={ROCKET_MESH_NAME } isGameActive={isGameStarted} /> {/* Contains game state logic */}
         <LandingFloor/>
+        <LandingFloor3/>
+
+ {/* 
         < Waterfloor/>
-        {/* <Text> component could be added here for status messages if state is lifted */}
+        */}
+        
       </Suspense>
       </Physics>
       {/* Controls */}

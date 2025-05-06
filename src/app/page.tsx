@@ -77,12 +77,12 @@ const MAX_LANDING_SPEED_HORIZONTAL = 0.2; // Placeholder+
 
 
 // Vertical Physics (Y-Axis)
-const ROCKET_FALL_ACCELERATION = 0.001;
+const ROCKET_FALL_ACCELERATION = 2.1;
 const ROCKET_MAIN_THRUST = 1.3;
  
 // ROCKET_DRAG_VERTICAL = 0.05; origi
  
-const ROCKET_DRAG_VERTICAL = 7.05;
+const ROCKET_DRAG_VERTICAL = 0.05;
 
 // Horizontal Plane Physics (XZ-Axis)
 const ROCKET_MANEUVER_THRUST = 1.6;
@@ -114,8 +114,8 @@ type GameState = 'playing' | 'landed' | 'crashed' | 'resetting';
 
 // Vertical Physics (Y-Axis) - Using FORCE now
 const EFFECTIVE_GRAVITY_MAGNITUDE = Math.abs(-9.81 * 0.8 * 1.5); // Calculated from worldGravity * gravityScale (approx 11.77)
-const THRUST_ACCELERATION_FACTOR = 0.41; // How much stronger than gravity is the thrust? (e.g., 1.0 = hover, 1.5 = 50% more force) - **TUNE THIS**
-const ROCKET_THRUST_FORCE = EFFECTIVE_GRAVITY_MAGNITUDE * THRUST_ACCELERATION_FACTOR; // Total upward force when thrusting
+const THRUST_ACCELERATION_FACTOR = 1.6; // How much stronger than gravity is the thrust? (e.g., 1.0 = hover, 1.5 = 50% more force) - **TUNE THIS**
+const ROCKET_THRUST_FORCE = 2.6 * THRUST_ACCELERATION_FACTOR; // Total upward force when thrusting
 // const ROCKET_FALL_ACCELERATION = 0.5; // Less relevant now, gravity handles fall
 // const ROCKET_MAIN_THRUST = 0.9; // REMOVE or repurpose this (old impulse value)
 const ROCKET_MAX_FALL_SPEED = 1.0; // Keep for clamping if desired
@@ -123,13 +123,13 @@ const ROCKET_MAX_RISE_SPEED = 1.1; // Keep for clamping if desired
 const ROCKET_VERTICAL_DAMPING = 1.1; // Damping factor specifically for vertical - **TUNE THIS** (Value for RigidBody prop)
 
 // Horizontal Plane Physics (XZ-Axis) - Using FORCE now
-const ROCKET_MANEUVER_FORCE = 6.0; // Force applied for maneuvering - **TUNE THIS**
+const ROCKET_MANEUVER_FORCE = 1.0; // Force applied for maneuvering - **TUNE THIS**
 // const ROCKET_MANEUVER_THRUST = 2.0; // REMOVE or repurpose (old impulse value)
 const ROCKET_MAX_XZ_SPEED = 2.0; // Keep for clamping if desired
 const ROCKET_XZ_DAMPING = 1.2; // Damping factor for horizontal - **TUNE THIS** (Value for RigidBody prop)
 
 // Combined Damping for RigidBody prop (Start with similar values, might need adjustment)
-const ROCKET_LINEAR_DAMPING = 51.0005; // **TUNE THIS** - Applies to X, Y, Z
+const ROCKET_LINEAR_DAMPING = 13.2; // **TUNE THIS** - Applies to X, Y, Z
 
 // Wind
 const WIND_FORCE_SCALE = 5.0; // Adjust scale for force application - **TUNE THIS**
@@ -344,47 +344,7 @@ const LandingFloor3 = () => {
 
 
 
-
-  
-// Define dimensions and position for the water plane
-const WATER_PLANE_WIDTH = 165; // From your original component
-const WATER_PLANE_DEPTH = 455; // From your original component
-
-// Position based on your original RigidBody placement, adjust Y level as desired
-const WATER_POSITION_X = 210;
-const WATER_POSITION_Z = 0;
-const WATER_LEVEL_Y = PLATFORM_Y; // Place it slightly below or at the platform base level
-
-/**
- * Simple visual-only water plane component.
- */
-const Waterfloor = () => {
-  return (
-    <mesh
-      // Position the center of the plane in the world
-      position={[WATER_POSITION_X-120, WATER_LEVEL_Y, WATER_POSITION_Z]}
-      // Rotate the plane geometry to be horizontal (flat on XZ)
-      rotation={[-Math.PI / 2, 0, 0]}
-      // Optionally receive shadows if other objects cast onto it
-      receiveShadow
-      name="simpleWaterSurface" // Give it a descriptive name
-    >
-      {/* Use simple PlaneGeometry, only 1x1 segments needed */}
-      <planeGeometry args={[WATER_PLANE_WIDTH, WATER_PLANE_DEPTH, 1, 1]} />
-      {/* Use a basic material with a blue color */}
-      <meshStandardMaterial
-        color="#4682B4" // A water-like blue color (SteelBlue) - adjust as needed
-        metalness={0.1}  // Low metalness for water look
-        roughness={1.3}  // Relatively smooth, adjust for desired shininess
-        // Optional: Add transparency for a better water effect
-        transparent={true}
-        opacity={0.9}
-        // side={THREE.DoubleSide} // Uncomment if the camera might go below the plane
-      />
-    </mesh>
-  );
-};
-
+ 
  
 
 
@@ -605,6 +565,13 @@ const ROT_SPEED = Math.PI / 61; // 30° / sec
 const ARMS_POSITION_X = PLATFORM_CENTER_X + 0.5;
 const ARMS_POSITION_Y = 11 + PLATFORM_Y + ARM_TARGET_HEIGHT / 2;
 const ARMS_POSITION_Z = PLATFORM_CENTER_Z;
+
+
+
+
+
+
+
 
 const LandingArmsR: React.FC<{ isLanded: boolean }> = ({ isLanded }) => {
     const armsPosition: [number, number, number] = [ARMS_POSITION_X, ARMS_POSITION_Y, ARMS_POSITION_Z];
@@ -939,167 +906,7 @@ const LandingArmsL: React.FC<{ isLanded: boolean }> = ({ isLanded })  => {
 
 
 
-
-
-/* 
-
-// --- PlatformArm1 ---
-// --- PlatformArm1 (Refactored) ---
-const PlatformArm1 = ({
-  isDeployingArms = false,
-  // Pass rotation values, ensure parent component memoizes if needed
-  initialRotation = { x: 0, y: Math.PI / -12, z: 0 },
-  deployedRotation = { x: 0, y: 0, z: Math.PI / 3 }
-}) => {
-  const armApi = useRef<RapierRigidBody>(null!);
-  const meshRef = useRef<THREE.Mesh>(null!);
-
-  const armSize: [number, number, number] = [3, 0.4, 0.2];
-  const armColliderArgs: [number, number, number] = [armSize[0] / 2, armSize[1] / 2, armSize[2] / 2];
-  const platformPosition: [number, number, number] = [PLATFORM_CENTER_X - 2, -3, PLATFORM_CENTER_Z - 0.9];
-
-  // Memoize the Euler objects if props might change identity but not value
-  // Note: If the parent guarantees stable object refs (e.g., via useMemo/useState),
-  // this internal useMemo might be slightly redundant but adds safety.
-  const targetInitialEuler = useMemo(() => new THREE.Euler(initialRotation.x, initialRotation.y, initialRotation.z, 'XYZ'), [initialRotation]);
-  const targetDeployedEuler = useMemo(() => new THREE.Euler(deployedRotation.x, deployedRotation.y, deployedRotation.z, 'XYZ'), [deployedRotation]);
-
-  useFrame((state, delta) => {
-    if (armApi.current) {
-      // Determine the target Euler DIRECTLY based on the prop
-      const targetEuler = isDeployingArms ? targetDeployedEuler : targetInitialEuler;
-
-      // Convert target Euler to Quaternion
-      const targetQuat = new THREE.Quaternion().setFromEuler(targetEuler);
-
-      // Get current physics rotation
-      const currentQuat = armApi.current.rotation();
-
-      // Interpolate using Slerp
-      const step = delta * 4.0; // Adjust interpolation speed
-      const interpolatedQuat = new THREE.Quaternion()
-        .copy(currentQuat)
-        .slerp(targetQuat, step);
-
-      // Set the NEXT kinematic rotation
-      armApi.current.setNextKinematicRotation(interpolatedQuat);
-    }
-  });
-
-  // Set the initial physics rotation ONLY ONCE when the RigidBody mounts
-  // Note: The 'rotation' prop on RigidBody handles the initial setting.
-  const initialEulerForRigidBody = useMemo(() => new THREE.Euler(initialRotation.x, initialRotation.y, initialRotation.z, 'XYZ'), [initialRotation]);
-
-
-  return (
-    <RigidBody
-      ref={armApi}
-      type="kinematicPosition"
-      position={platformPosition}
-      rotation={initialEulerForRigidBody} // Use the memoized initial Euler here
-      colliders={false}
-      userData={{ type: 'arm', id: 'arm1' }}
-    >
-      <CuboidCollider args={armColliderArgs} />
-      <mesh
-        ref={meshRef}
-        receiveShadow
-        name="platformArm1"
-      >
-        <boxGeometry args={armSize} />
-        <meshStandardMaterial color="darkblue" metalness={0.8} roughness={0.3}/>
-      </mesh>
-    </RigidBody>
-  );
-};
-
-// Apply the EXACT SAME refactoring logic to PlatformArm2
-// --- PlatformArm1 (Refactored) ---
-const PlatformArm2 = ({
-  isDeployingArms = false,
-  // Pass rotation values, ensure parent component memoizes if needed
-  initialRotation = { x: 0, y: Math.PI / 12, z: 0 },
-  deployedRotation = { x: 0, y: 0, z: Math.PI / 3 }
-}) => {
-  const armApi = useRef<RapierRigidBody>(null!);
-  const meshRef = useRef<THREE.Mesh>(null!);
-
-  const armSize: [number, number, number] = [3, 0.4, 0.2];
-  const armColliderArgs: [number, number, number] = [armSize[0] / 2, armSize[1] / 2, armSize[2] / 2];
-  const platformPosition: [number, number, number] = [PLATFORM_CENTER_X - 2, -3, PLATFORM_CENTER_Z + 0.9];
-
-  // Memoize the Euler objects if props might change identity but not value
-  // Note: If the parent guarantees stable object refs (e.g., via useMemo/useState),
-  // this internal useMemo might be slightly redundant but adds safety.
-  const targetInitialEuler = useMemo(() => new THREE.Euler(initialRotation.x, initialRotation.y, initialRotation.z, 'XYZ'), [initialRotation]);
-  const targetDeployedEuler = useMemo(() => new THREE.Euler(deployedRotation.x, deployedRotation.y, deployedRotation.z, 'XYZ'), [deployedRotation]);
-
-  useFrame((state, delta) => {
-    if (armApi.current) {
-      // Determine the target Euler DIRECTLY based on the prop
-      const targetEuler = isDeployingArms ? targetDeployedEuler : targetInitialEuler;
-
-      // Convert target Euler to Quaternion
-      const targetQuat = new THREE.Quaternion().setFromEuler(targetEuler);
-
-      // Get current physics rotation
-      const currentQuat = armApi.current.rotation();
-
-      // Interpolate using Slerp
-      const step = delta * 4.0; // Adjust interpolation speed
-      const interpolatedQuat = new THREE.Quaternion()
-        .copy(currentQuat)
-        .slerp(targetQuat, step);
-
-      // Set the NEXT kinematic rotation
-      armApi.current.setNextKinematicRotation(interpolatedQuat);
-    }
-  });
-
-  // Set the initial physics rotation ONLY ONCE when the RigidBody mounts
-  // Note: The 'rotation' prop on RigidBody handles the initial setting.
-  const initialEulerForRigidBody = useMemo(() => new THREE.Euler(initialRotation.x, initialRotation.y, initialRotation.z, 'XYZ'), [initialRotation]);
-
-
-  return (
-    <RigidBody
-      ref={armApi}
-      type="kinematicPosition"
-      position={platformPosition}
-      rotation={initialEulerForRigidBody} // Use the memoized initial Euler here
-      colliders={false}
-      userData={{ type: 'arm', id: 'arm1' }}
-    >
-      <CuboidCollider args={armColliderArgs} />
-      <mesh
-        ref={meshRef}
-        receiveShadow
-        name="platformArm1"
-      >
-        <boxGeometry args={armSize} />
-        <meshStandardMaterial color="darkblue" metalness={0.8} roughness={0.3}/>
-      </mesh>
-    </RigidBody>
-  );
-};
-
-// Apply the EXACT SAME refactoring logic to PlatformArm2
-
-
- */
-
-
-
-
-
-
-
-
-
-
-
-
-
+ 
 
 
 
@@ -1162,77 +969,7 @@ const CaptureZoneVisualizer = () => {
 
 
 
-
-
-
-
-
-
-/* 
-
-const CUBE_SIZE = 1; // Size of each side of the cube
-const CUBE_GEOMETRY_ARGS = [CUBE_SIZE, CUBE_SIZE, CUBE_SIZE];
-const CUBE_MATERIAL_PROPS = {
-    color: "red",
-    transparent: true,
-    opacity: 0.45,
-    depthWrite: false, // Keep original material properties
-};
-const MAX_CUBES = 10;
- */
-
-/**
- * Creates a vertical stack of semi-transparent cubes.
- * @param {object} props - Component props.
- * @param {number} [props.count=5] - The number of cubes to stack (capped at 10).
- * @param {THREE.Vector3 | [number, number, number]} [props.position=[0, 0, 0]] - The base position for the bottom cube's center.
- */
-
-/* 
-const CubeStackVisualizer = ({ count = 5, position = [0, 0, 0] }) => {
-    // Ensure count is an integer between 1 and MAX_CUBES
-    const actualCount = Math.max(1, Math.min(MAX_CUBES, Math.floor(count)));
-
-    // Calculate positions for each cube
-    const cubes = [];
-    for (let i = 0; i < actualCount; i++) {
-        // Calculate the Y position for the center of the current cube
-        // The first cube's center (i=0) is at Y = CUBE_SIZE / 2
-        // Each subsequent cube is CUBE_SIZE higher
-        const yPosition = (CUBE_SIZE / 2) + (i * CUBE_SIZE);
-
-        // Create the position vector relative to the group's position
-        // We use a group so the 'position' prop applies to the whole stack base
-        const cubePosition = [-0.1, yPosition-5, 0]; // X and Z are relative to the group
-
-        cubes.push(
-            <mesh
-                key={i} // Important: Unique key for list rendering
-                position={cubePosition}
-                name={`CubeUnitVisualizer_${i}`} // Optional: Unique name per cube
-            >
-                <boxGeometry args={CUBE_GEOMETRY_ARGS} />
-                <meshStandardMaterial {...CUBE_MATERIAL_PROPS} />
-            </mesh>
-        );
-    }
-
-    // Render all cubes within a group, applying the overall position prop to the group
-    return (
-        <group position={position}>
-            {cubes}
-        </group>
-    );
-};
- */
-
-
-
-
-
-
-
-
+ 
 
 
 
@@ -1313,6 +1050,29 @@ function Loader() {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /**
  * main FallingRocket object that falls from sky with attached flame.
  */
@@ -1346,14 +1106,6 @@ const FallingRocket = ({
 
   const thrustFactorRef = useRef(THRUST_ACCELERATION_FACTOR);
 
-
-
-
-
- 
-
-
-
   const rocketColliderArgs: [number, number, number] = [
       ROCKET_WIDTH / 2+0.16,
       ROCKET_HEIGHT / 2,
@@ -1368,13 +1120,6 @@ const FallingRocket = ({
       rocketColliderArgs[2] * 2, // Full depth = half-depth * 2
   ], [rocketColliderArgs]); // Recalculate if collider args change (they don't here, but good practice)
 
-
-
-
-
-
-
-
   useEffect(() => {
     // Initialize flame properties on mount
     flameOpacityRef.current = 0;
@@ -1383,8 +1128,6 @@ const FallingRocket = ({
 
     }
 }, []);
-
-
   
   // --- Game State Setter ---
   // Function to update both state and ref simultaneously
@@ -1424,19 +1167,12 @@ if (newState === 'playing' || newState === 'resetting') {
     onCrashedChange?.(false);
 }
 };
-
-
   
   // --- Rocket Visuals ---
   const rocketColor = gameState === 'landed' ? 'lime' : gameState === 'crashed' ? 'red' : '#ADD8E6';
   const rocketEmissive = gameState === 'landed' ? 'green' : gameState === 'crashed' ? 'darkred' : '#4682B4';
 
   const obj = useLoader(OBJLoader, '/booster_obj_1.obj'); // Or '/models/rocket.obj' etc.
-
-
-
-
-
 
   // Create a memoized material instance
   const rocketMaterial = useMemo(() => new THREE.MeshStandardMaterial({
@@ -1467,11 +1203,6 @@ useEffect(() => {
 
 
 
-
-
-
- 
-
 const modelScale = useMemo(() => {
   // *** ADD THIS CHECK ***
   if (!obj) {
@@ -1499,13 +1230,6 @@ const modelScale = useMemo(() => {
 
 }, [obj]); // Dependency array remains the same
 
-
-
-
-
-
-
-
 const handleCollision = (event: CollisionPayload) => {
   const currentGameState = gameStateRef.current; // Get current state for checks
 
@@ -1525,6 +1249,8 @@ const handleCollision = (event: CollisionPayload) => {
 
           // Stop the rocket immediately upon crash
           if (rocketApi.current) {
+            console.log(22);
+            rocketApi.current.resetForces(true); 
               rocketApi.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
               rocketApi.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
           }
@@ -1539,13 +1265,6 @@ const handleCollision = (event: CollisionPayload) => {
       return;
   }
 };
-
-
-
-
-
-
-
 
   const resetGame = () => {
     landedPositionRef.current = null;
@@ -1582,17 +1301,6 @@ const handleCollision = (event: CollisionPayload) => {
        
     }, 110); // Increased delay slightly
   };
-
-
-
-
-
-
-
-
-
-
-
 
   // Effect to apply material and shadows dynamically to all meshes in the loaded OBJ
   useEffect(() => {
@@ -1648,7 +1356,10 @@ const handleCollision = (event: CollisionPayload) => {
 
       // Handle Reset Key directly here
       if (event.key.toLowerCase() === RESET_KEY && gameStateRef.current !== 'resetting') {
-           resetGame();
+          //  resetGame(); original 
+           if (typeof window !== 'undefined') { // Good practice check
+            window.location.reload();
+       }
       }
     };
 
@@ -1712,7 +1423,7 @@ const landedRotationRef = useRef<{ x: number, y: number, z: number, w: number } 
         force.y += ROCKET_THRUST_FORCE; // Apply thrust force
       } else {
         // Apply gravity when not thrusting
-        force.y -= EFFECTIVE_GRAVITY_MAGNITUDE;
+           force.y -= EFFECTIVE_GRAVITY_MAGNITUDE;
       }
   
       // Maneuvering Forces
@@ -1820,12 +1531,19 @@ const landedRotationRef = useRef<{ x: number, y: number, z: number, w: number } 
   // This part remains the same
   if (currentPosition.y < SCENE_BOUNDS_BOTTOM) {
       console.log("Fell off bottom.");
-      if (gameStateRef.current !== 'crashed') { // Prevent multiple messages
+
+      if (gameStateRef.current !== 'crashed') { 
+          console.log("gameStateRef.current !== 'crashed.");
+      // Prevent multiple messages
           setGameState('crashed');
           setStatusMessage('Lost in space... Press R.');
           // Stop physics body (setLinvel is OK here)
-          body.setLinvel({ x: 0, y: 0, z: 0 }, true);
-          body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+
+                        if (rocketApi.current) {
+                          rocketApi.current.resetForces(true); // <<< ADD THIS LINE
+                          rocketApi.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+                          rocketApi.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
+              }
       }
   }
 } else if (gameStateRef.current === 'landed' || gameStateRef.current === 'crashed') {
@@ -1843,16 +1561,7 @@ if (gameStateRef.current === 'landed' && rocketApi.current && landedPositionRef.
 
 });
 
- 
-
-
- 
-
-
-
-
-
-  const colliderHalfHeight = ROCKET_HEIGHT / 2;
+   const colliderHalfHeight = ROCKET_HEIGHT / 2;
   return (
     <RigidBody
           ref={rocketApi}
@@ -1869,32 +1578,6 @@ if (gameStateRef.current === 'landed' && rocketApi.current && landedPositionRef.
               args={rocketColliderArgs}
               onCollisionEnter={handleCollision}
           />
-
-
-
-
-
-      {/* --- DEBUG: Visual Bounding Box --- */}
-      {/* 2. Visual Mesh for the Bounding Box */}
-      {/* This mesh uses the FULL dimensions derived from the collider args */}
-      {/* It's placed inside the RigidBody, so it automatically follows its position/rotation */}
-      {/*<mesh name="physicsBoundingBoxVisualizer">*/}
-       {/* <boxGeometry args={visualBoundingBoxArgs} />*/}
-       {/* <meshBasicMaterial*/}
-       {/*     color="lime"      // Bright color for visibility*/}
-       {/*     wireframe={true}  // Show as wireframe to see the model inside*/}
-       {/*     transparent={true} // Allow seeing through*/}
-       {/*     opacity={0.6}     // Make it semi-transparent*/}
-       {/*     depthWrite={false}// Optional: Prevents potential z-fighting issues*/}
-       {/*  />*/}
-       {/*</mesh>*/}
-      {/* ---------------------------------- */}
-
-
-
-
-
-
           {/* Visual Representation: The Loaded Model */}
           {/* We use <primitive> to render an existing THREE object (the loaded group) */}
           {/* The `object` prop takes the result from useLoader */}
@@ -1930,6 +1613,20 @@ if (gameStateRef.current === 'landed' && rocketApi.current && landedPositionRef.
       </RigidBody>
   );
 };
+// end falling rocket
+
+//
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2178,7 +1875,7 @@ const RocketLandingScene = () => {
     return cam;
   });
  
-  const worldGravity: [number, number, number] = [0, -9.81 * 0.8, 0]; // Example: Slightly less than Earth gravity
+  const worldGravity: [number, number, number] = [0, -9.81 * 0.8 *3.5, 0]; // Example: Slightly less than Earth gravity
 
   const handleLandedChange = React.useCallback((landed: boolean) => {
     setIsRocketLanded(landed);
@@ -2260,6 +1957,13 @@ const RocketLandingScene = () => {
     /* simulate “R” key which your rocket already listens to */
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "r" }));
   }, []);
+
+  const handleRestartWithReload = React.useCallback(() => {
+    console.log("Restart triggered: Reloading page...");
+    if (typeof window !== 'undefined') { // Good practice check
+         window.location.reload();
+    }
+}, []);
 
 
   return (
@@ -2363,8 +2067,8 @@ const RocketLandingScene = () => {
 
     </Canvas>
       <InstructionsUI />
-      <WinDrawer open={isRocketLanded} onRestart={sendReset} />
-      <LoseDrawer open={isRocketCrashed} onRestart={sendReset} /> 
+      <WinDrawer open={isRocketLanded} onRestart={handleRestartWithReload} />
+      <LoseDrawer open={isRocketCrashed} onRestart={handleRestartWithReload} /> 
       
 
 

@@ -21,6 +21,8 @@ import WinDrawer from "./WinDrawer";
 import { useLoader } from '@react-three/fiber'
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js'
 import { GLTFLoader  } from 'three/addons/loaders/GLTFLoader.js'
+import Skybox from './Skybox'; 
+
 
 // --- Constants ---
 // Scene
@@ -114,8 +116,8 @@ type GameState = 'playing' | 'landed' | 'crashed' | 'resetting';
 
 // Vertical Physics (Y-Axis) - Using FORCE now
 const EFFECTIVE_GRAVITY_MAGNITUDE = Math.abs(-9.81 * 0.8 * 1.5); // Calculated from worldGravity * gravityScale (approx 11.77)
-const THRUST_ACCELERATION_FACTOR = 1.6; // How much stronger than gravity is the thrust? (e.g., 1.0 = hover, 1.5 = 50% more force) - **TUNE THIS**
-const ROCKET_THRUST_FORCE = 2.6 * THRUST_ACCELERATION_FACTOR; // Total upward force when thrusting
+const THRUST_ACCELERATION_FACTOR = 1.69; // How much stronger than gravity is the thrust? (e.g., 1.0 = hover, 1.5 = 50% more force) - **TUNE THIS**
+const ROCKET_THRUST_FORCE = 2.66 * THRUST_ACCELERATION_FACTOR; // Total upward force when thrusting
 // const ROCKET_FALL_ACCELERATION = 0.5; // Less relevant now, gravity handles fall
 // const ROCKET_MAIN_THRUST = 0.9; // REMOVE or repurpose this (old impulse value)
 const ROCKET_MAX_FALL_SPEED = 1.0; // Keep for clamping if desired
@@ -195,6 +197,8 @@ const getRandomWindVector = (): THREE.Vector3 => {
  * Landing Floor Component (Physics Enabled)
  */
 const LandingFloor = () => {
+
+
   // Collider dimensions are half-extents (width/2, height/2, depth/2)
   const floorColliderArgs: [number, number, number] = [132, FLOOR_HEIGHT / 2+0.2, 132];
 
@@ -1860,9 +1864,12 @@ function CockpitCameraDebugger() {
 
 
 /**
- * Main Scene Component
+ * Main Scene Component   const backgroundTexture = useTexture(user_selected_background);
  */
 const RocketLandingScene = () => {
+
+
+ 
 
   const [isGameStarted, setIsGameStarted] = useState(false);
   const [isRocketLanded, setIsRocketLanded] = useState(false);
@@ -1870,8 +1877,8 @@ const RocketLandingScene = () => {
   const [stationaryCamera] = useState(() => {
     const cam = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
     cam.name = STATIONARY_CAMERA_NAME;
-    cam.position.set(2, -1.3, -1); // Position the camera
-    cam.lookAt(new THREE.Vector3(-2.5, PLATFORM_TOP_Y, 0.5)); // Look at the platform
+    cam.position.set(1, -2.6, -1.69); // Position the camera
+    cam.lookAt(new THREE.Vector3(-2.7, PLATFORM_TOP_Y-0.1, 0.5)); // Look at the platform
     return cam;
   });
  
@@ -1942,6 +1949,9 @@ const RocketLandingScene = () => {
             borderRadius: '5px',
             fontWeight: 'bold',
             transition: 'background-color 0.2s ease',
+               fontFamily: 'monospace, Menlo, Monaco, Consolas, "Courier New" ',
+           
+
           }}
           onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#50c3e0'}
           onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#61dafb'}
@@ -1966,9 +1976,13 @@ const RocketLandingScene = () => {
 }, []);
 
 
+ 
+
+
   return (
  
          <>
+              
 <Canvas
       style={{ 
         position: 'fixed', // Position it relative to the viewport
@@ -1981,13 +1995,15 @@ const RocketLandingScene = () => {
       
       }}
       shadows
-      // Disable default rendering loop if using custom MultiViewRenderer that handles it
-      // frameloop="demand" // Or manage manually if MultiViewRenderer isn't rendering every frame
+ 
     >
+      <Suspense fallback={null}>
+        <Skybox imageUrl="/back.jpg" />
+
   {/*
     <fog attach="fog" args={['#abcdef', 50, 170]} />
     */}    
-  
+ 
         {/* Main Camera */}
         <PerspectiveCamera
             makeDefault
@@ -2029,9 +2045,12 @@ const RocketLandingScene = () => {
               <Physics gravity={worldGravity}         paused={!isGameStarted}>
               
       {/* Scene Content */}
-      <Suspense fallback={<Loader />}>
+ 
 
         {/* */}
+
+
+
         <LandingPlatform /> 
 
         <LandingArmsL  isLanded={isRocketLanded}/>
@@ -2054,7 +2073,7 @@ const RocketLandingScene = () => {
         < Waterfloor/>
         */}
         
-      </Suspense>
+      
       </Physics>
       {/* Controls */}
       <OrbitControls enableRotate={true} enablePan={true} enableZoom={true} />
@@ -2065,7 +2084,9 @@ const RocketLandingScene = () => {
        <RotatingCamera active={isRocketLanded} />
         */}
 
+    </Suspense>
     </Canvas>
+
       <InstructionsUI />
       <WinDrawer open={isRocketLanded} onRestart={handleRestartWithReload} />
       <LoseDrawer open={isRocketCrashed} onRestart={handleRestartWithReload} /> 

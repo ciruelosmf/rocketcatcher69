@@ -11,10 +11,11 @@ const InstructionsUI = () => {
     color: 'white',       // White text
     padding: '10px 15px', // Padding inside the box
     borderRadius: '8px',  // Rounded corners
-    fontFamily: 'sans-serif', // Basic font
+    
     fontSize: '14px',
     zIndex: 100,          // Ensure it's above the canvas (which usually has lower/no z-index)
     pointerEvents: 'none', // Allow clicks/touches to pass through to the canvas if needed
+    fontFamily: 'monospace, Menlo, Monaco, Consolas, "Courier New" ',
   };
 
   return (

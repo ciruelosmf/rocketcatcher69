@@ -30,7 +30,7 @@ const LoseDrawer: React.FC<LoseDrawerProps> = ({ open, onRestart }) => {
       {/* --- Changed Text --- */}
       <h2 style={{ margin: 0, marginBottom: 12 }}>Mission Failed!</h2>
       <p style={{ margin: 0, marginBottom: 24 }}>
-        The booster was destroyed. GG!
+        The booster collided with platform, and it was destroyed. You should try again.
       </p>
       {/* --- Changed Button Text --- */}
       <button

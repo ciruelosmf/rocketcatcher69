@@ -42,8 +42,8 @@ const PLATFORM_TOP_Y = PLATFORM_Y + PLATFORM_HEIGHT; // Result: -16.5 + 14.5 = -
 
 // --- Capture Zone Definition ---
 // This defines the target *volume* where the rocket needs to be for a successful catch
-const CAPTURE_ZONE_WIDTH = 1.0; // Must be within this horizontal width (centered)
-const CAPTURE_ZONE_DEPTH = 1.0; // Must be within this horizontal depth (centered)
+const CAPTURE_ZONE_WIDTH = 1.3; // Must be within this horizontal width (centered)
+const CAPTURE_ZONE_DEPTH = 1.3; // Must be within this horizontal depth (centered)
 // CAPTURE_TARGET_Y is the *ideal* Y coordinate for the ROCKET'S CENTER during capture.
 // Let's align it with the top of the platform structure for now.
 const CAPTURE_TARGET_Y = PLATFORM_TOP_Y; // Target Y = -2.0
@@ -115,7 +115,7 @@ type GameState = 'playing' | 'landed' | 'crashed' | 'resetting';
 
 
 // Vertical Physics (Y-Axis) - Using FORCE now
-const EFFECTIVE_GRAVITY_MAGNITUDE = Math.abs(-9.81 * 0.8 * 1.5); // Calculated from worldGravity * gravityScale (approx 11.77)
+const EFFECTIVE_GRAVITY_MAGNITUDE = Math.abs(-9.81 * 0.8 * 0.66); // Calculated from worldGravity * gravityScale (approx 11.77)
 const THRUST_ACCELERATION_FACTOR = 1.69; // How much stronger than gravity is the thrust? (e.g., 1.0 = hover, 1.5 = 50% more force) - **TUNE THIS**
 const ROCKET_THRUST_FORCE = 2.66 * THRUST_ACCELERATION_FACTOR; // Total upward force when thrusting
 // const ROCKET_FALL_ACCELERATION = 0.5; // Less relevant now, gravity handles fall
@@ -926,12 +926,12 @@ const LandingArmsL: React.FC<{ isLanded: boolean }> = ({ isLanded })  => {
 const CaptureZoneVisualizer = () => {
     // The visualizer box should represent the entire vertical tolerance range.
     // Its height is therefore `CAPTURE_VERTICAL_TOLERANCE * 2`.
-    const visualizerHeight = 6.2; // 6.0
+    const visualizerHeight = 7.0; // 6.0
 
     // The box needs to be centered vertically at CAPTURE_TARGET_Y.
     const visualizerPosition = new THREE.Vector3(
         PLATFORM_CENTER_X-2,
-        CAPTURE_TARGET_Y-3.8, // Center the visual box at the target Y
+        CAPTURE_TARGET_Y-3.5, // Center the visual box at the target Y
         PLATFORM_CENTER_Z
     );
 
@@ -974,7 +974,7 @@ const CaptureZoneVisualizer = () => {
 
 
  
-
+console.log(CAPTURE_TARGET_Y, "CAPTURE_TARGET_Y");
 
 
 
@@ -1571,6 +1571,8 @@ if (gameStateRef.current === 'landed' && rocketApi.current && landedPositionRef.
           ref={rocketApi}
           colliders={false} // Use manual collider below
           position={initialPosition}
+          // rotation={[0, Math.PI / (3.2) , 0]}
+
           linearDamping={ROCKET_LINEAR_DAMPING}
           angularDamping={1.0}
         
@@ -2020,9 +2022,11 @@ const RocketLandingScene = () => {
 
 <primitive object={stationaryCamera} />
 
- {/* 
-<AxesHelperComponent size={1} /> 
- */}
+  {/* 
+<AxesHelperComponent size={1}  position={[-2, -2.0,0]} /> 
+
+<AxesHelperComponent size={1}  position={[-2, -9.0,0]} /> 
+        */}
 
       {/* Lighting */}
       <ambientLight intensity={0.5} />
@@ -2045,14 +2049,9 @@ const RocketLandingScene = () => {
               <Physics gravity={worldGravity}         paused={!isGameStarted}>
               
       {/* Scene Content */}
- 
-
         {/* */}
 
-
-
         <LandingPlatform /> 
-
         <LandingArmsL  isLanded={isRocketLanded}/>
         <LandingArmsR isLanded={isRocketLanded}/>
         <StationRoad/>
@@ -2061,18 +2060,18 @@ const RocketLandingScene = () => {
         <PlatformArm2 /> 
         */}
 
-        
-        {/* Add the capture zone visualizer 
-        <CaptureZoneVisualizer />           */}
+                {/* Add the capture zone visualizer   */}
+        <CaptureZoneVisualizer />          
+
         {/* < CubeStackVisualizer/>*/}
         <FallingRocket   onCrashedChange={handleCrashedChange}  onLandedChange={handleLandedChange} rocketName={ROCKET_MESH_NAME } isGameActive={isGameStarted} /> {/* Contains game state logic */}
+
         <LandingFloor/>
         <LandingFloor3/>
 
  {/* 
         < Waterfloor/>
-        */}
-        
+        */}        
       
       </Physics>
       {/* Controls */}

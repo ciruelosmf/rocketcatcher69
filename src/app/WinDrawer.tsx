@@ -29,7 +29,7 @@ const WinDrawer: React.FC<WinDrawerProps> = ({ open, onRestart }) => {
     <div style={drawerStyle}>
       <h2 style={{ margin: 0, marginBottom: 12 }}>Touchdown!</h2>
       <p style={{ margin: 0, marginBottom: 24 }}>
-        You successfully landed the booster.
+        You successfully catched the booster.
       </p>
       <button
         onClick={onRestart}

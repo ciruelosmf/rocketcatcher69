@@ -5,7 +5,7 @@ const InstructionsUI = () => {
   // Basic CSS-in-JS for styling and positioning
   const uiStyle: React.CSSProperties = {
     position: 'fixed',    // Position relative to the viewport
-    bottom: '795px',       // Distance from the bottom edge
+    bottom: '735px',       // Distance from the bottom edge
     left: '20px',         // Distance from the left edge
     backgroundColor: 'rgba(0, 0, 0, 0.6)', // Semi-transparent black background
     color: 'white',       // White text
@@ -20,13 +20,15 @@ const InstructionsUI = () => {
 
   return (
     <div style={uiStyle}>
+      <h1 style={{ marginTop: '1px' }}>RocketCatcher69</h1>
+      <p style={{ marginTop: '18px', marginBottom: '2px' }}><em>Place the rocket in the yellow zone!</em></p>
+
       <p><strong>Controls:</strong></p>
       <ul style={{ margin: 0, paddingLeft: '20px' }}>
         <li><strong>[Spacebar]</strong>: Thrust Up</li>
         <li><strong>[w,a,s,d Keys]</strong>: Move Horizontally</li>
         <li><strong>[R]</strong>: Reset Game</li>
       </ul>
-      <p style={{ marginTop: '8px' }}><em>Place the rocket in the yellow zone!</em></p>
     </div>
   );
 };

@@ -1958,7 +1958,7 @@ const RocketLandingScene = () => {
           onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#50c3e0'}
           onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#61dafb'}
         >
-          Start RocketCatcher69
+              Yeah let's do this    
         </button>
       </div>
     </div>

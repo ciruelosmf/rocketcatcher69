@@ -3,7 +3,7 @@
 
 import React, { Suspense, useRef, useEffect, useState, useLayoutEffect, useMemo } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Html, OrbitControls, OrthographicCamera, useTexture , Text, View, PerspectiveCamera, useProgress, Stats  } from '@react-three/drei';
+import { Html, OrbitControls, OrthographicCamera, useTexture , Text, View, PerspectiveCamera, useProgress, Stats   } from '@react-three/drei';
 import * as THREE from 'three';
 import AxesHelperComponent from './AxesHelperComponent';
 import { Physics, RigidBody , CuboidCollider, CollisionPayload,
@@ -202,7 +202,7 @@ function LowPolyMountain({
   animationSpeed = 0.1,
   ...meshProps // Pass through any other mesh props (position, rotation, etc.)
 }) {
-  const geometryRef = useRef();
+const geometryRef = useRef<THREE.BufferGeometry | null>(null);
   const time = useRef(0);
 
   // Memoize the geometry so it's not recreated on every render
@@ -251,42 +251,7 @@ function LowPolyMountain({
 
 
   // Optional animation for the noise (requires more complex noise function ideally)
-  useFrame((state, delta) => {
-    if (animated && geometryRef.current) {
-      time.current += delta * animationSpeed;
-      const random = mulberry32(seed); // Re-seed for consistent base per frame
-      const pos = geometryRef.current.attributes.position;
-      const peakFalloff = size / 2;
-
-      for (let i = 0; i < pos.count; i++) {
-        const x = pos.getX(i);
-        const z = pos.getZ(i);
-        
-        const distFromCenter = Math.sqrt(x * x + z * z);
-        let baseHeight = Math.max(0, 1 - distFromCenter / peakFalloff);
-        baseHeight = baseHeight * baseHeight;
-
-        // Animated noise - here just adding time to one of the coordinates
-        // A more robust animated noise would use 3D/4D Simplex/Perlin noise
-        const nx = x / size * noiseScale + time.current;
-        const nz = z / size * noiseScale;
-        
-        // This animation will be very basic with mulberry32,
-        // as it's not designed for coherent noise fields.
-        // Simplex noise would be much better here.
-        // For demonstration, we'll just slightly vary the seeded random based on time.
-        // This is a hack and not true animated coherent noise.
-        let noiseVal = (mulberry32(seed + Math.floor(nx*10) + Math.floor(nz*10) + Math.floor(time.current*10))() - 0.5) * 2;
-
-        let y = baseHeight * (1 - noiseFactor) + baseHeight * noiseFactor * noiseVal;
-        y *= maxHeight;
-
-        pos.setY(i, Math.max(0, y));
-      }
-      pos.needsUpdate = true;
-      geometryRef.current.computeVertexNormals();
-    }
-  });
+ 
 
   return (
     <mesh geometry={animated ? undefined : geometry} ref={animated ? geometryRef : undefined} {...meshProps}>
@@ -437,68 +402,112 @@ const LandingFloor = () => {
 
 
 
-
-
-
-
-
-
-
 const LandingFloor3 = () => {
   // --- Load Texture ---
-  // useTexture returns the texture directly when given a single URL string
-  const colorMap = useTexture('/w.webp'); // Path to your desired texture
+  const colorMap = useTexture('/w.webp');
 
   // --- Configure Texture ---
-  const textureRepeatFactor = 1; // How many times the texture tiles across the floor
-  if (colorMap) { // Check if texture loaded successfully
+  const textureRepeatFactor = 1; // More repeat for wavy surface
+  if (colorMap) {
     colorMap.wrapS = colorMap.wrapT = THREE.RepeatWrapping;
     colorMap.repeat.set(textureRepeatFactor, textureRepeatFactor);
-    colorMap.needsUpdate = true; // Ensure updates are applied
+    colorMap.anisotropy = 16;
+    colorMap.needsUpdate = true;
   }
 
   // --- Define Visual Geometry Dimensions ---
   const floorWidth = 180;
   const floorDepth = 450;
-  // Segments: 1x1 is enough for a flat plane without displacement
-  const floorSegments = 1;
+  // Segments: Still need a good number for vertex manipulation
+  const floorSegmentsWidth = 1; // Adjust for performance/detail
+  const floorSegmentsDepth = 1; // Adjust for performance/detail
 
   // --- Define Visual Position & Rotation ---
-  // Use the world position that the original RigidBody had
-  const meshPosition: [number, number, number] = [110, PLATFORM_Y + 0.95, 0];
-  // Use the rotation the original mesh had to make it horizontal
+  const meshPosition: [number, number, number] = [106, PLATFORM_Y + 2.3, 0];
   const meshRotation: [number, number, number] = [-Math.PI / 2, 0, 0];
 
+  const geomRef = useRef<THREE.PlaneGeometry>(null!);
+  // To store the original z-positions (which are 0 for a plane) and other vertex data
+  const originalVertexData = useRef<{ x: number; y: number; originalZ: number }[]>([]);
+
+  // Effect to capture original vertex positions once the geometry is available
+  useEffect(() => {
+    if (geomRef.current) {
+      const positions = geomRef.current.attributes.position;
+      const tempOriginalData = [];
+      for (let i = 0; i < positions.count; i++) {
+        tempOriginalData.push({
+          x: positions.getX(i),
+          y: positions.getY(i),
+          originalZ: positions.getZ(i), // For a plane, this is initially 0
+        });
+      }
+      originalVertexData.current = tempOriginalData;
+    }
+  }, [geomRef.current]); // Rerun if geomRef changes (though it shouldn't after initial mount)
+
+
+  // --- Animation Logic ---
+  useFrame((state) => {
+    const time = state.clock.getElapsedTime();
+
+    if (geomRef.current && originalVertexData.current.length > 0) {
+      const positions = geomRef.current.attributes.position; // This is a BufferAttribute
+
+      for (let i = 0; i < positions.count; i++) {
+        const { x: origX, y: origY, originalZ } = originalVertexData.current[i];
+
+        // Simple wave calculation:
+        // Use original X and Y from the plane's local coordinates
+        const wave1Frequency = 0.02;
+        const wave1Amplitude = 1.5;
+        const wave1Speed = 0.1;
+
+        const wave2Frequency = 0.015;
+        const wave2Amplitude = 1.0;
+        const wave2Speed = 0.1;
+
+        const zOffset1 = Math.sin(origX * wave1Frequency + time * wave1Speed) * wave1Amplitude;
+        const zOffset2 = Math.cos(origY * wave2Frequency + time * wave2Speed * 0.8) * wave2Amplitude; // Different speed/offset
+
+        // The plane is defined in XY, so Z is "up" in its local space
+        positions.setZ(i, originalZ + zOffset1 + zOffset2);
+      }
+
+      positions.needsUpdate = true; // Tell Three.js to update the GPU buffer
+      geomRef.current.computeVertexNormals(); // VERY IMPORTANT for lighting!
+    }
+
+    // Optional: Animate texture offset for a bit more dynamism
+    if (colorMap) {
+        colorMap.offset.x = Math.sin(time * 0.1) * 0.02;
+        colorMap.offset.y = Math.cos(time * 0.07) * 0.02;
+    }
+  });
+
   return (
-    // --- Visual Mesh ---
-    // Apply position and rotation directly to the mesh
     <mesh
       position={meshPosition}
       rotation={meshRotation}
-      receiveShadow // Allow the floor to receive shadows if needed
-      name="simpleVisualFloor" // Descriptive name
+      receiveShadow
+      name="jsAnimatedWaterFloor"
     >
-      {/* Use PlaneGeometry */}
-      <planeGeometry args={[floorWidth, floorDepth, floorSegments, floorSegments]} />
-      {/* Simple Material with just the color map */}
+      {/* Assign ref to the geometry */}
+      <planeGeometry
+        ref={geomRef}
+        args={[floorWidth, floorDepth, floorSegmentsWidth, floorSegmentsDepth]}
+      />
       <meshStandardMaterial
-        map={colorMap} // Apply the color texture
-        metalness={0.1} // Adjust as needed for appearance
-        roughness={0.8} // Adjust as needed for appearance
-        side={THREE.DoubleSide} // Render both sides if the camera might go below
-        // Removed displacementMap and displacementScale properties
+        map={colorMap}
+        metalness={0.3}
+        roughness={0.2}
+        side={THREE.DoubleSide}
+        // If waves are large, normals might look faceted. Shaders handle this better.
+        // flatShading={false} // Ensure smooth shading
       />
     </mesh>
   );
- 
 };
-
-
-
-
-
-
-
 
 
 
@@ -2025,7 +2034,7 @@ const RocketLandingScene = () => {
 
  
 
-  const [isGameStarted, setIsGameStarted] = useState(true);
+  const [isGameStarted, setIsGameStarted] = useState(false);
   const [isRocketLanded, setIsRocketLanded] = useState(false);
   const [isRocketCrashed, setIsRocketCrashed] = useState(false); 
   const [stationaryCamera] = useState(() => {
@@ -2151,6 +2160,8 @@ const RocketLandingScene = () => {
       shadows
  
     >
+         
+
       <Suspense fallback={null}>
         
 
@@ -2199,7 +2210,6 @@ const RocketLandingScene = () => {
              {/*  <CockpitCameraDebugger /> */}
 
               <Physics gravity={worldGravity}         paused={!isGameStarted}>
-              
       {/* Scene Content */}
         {/* */}
 
@@ -2221,7 +2231,7 @@ const RocketLandingScene = () => {
         <LandingFloor/>
         <LandingFloor3/>
               <LowPolyMountain
-        position={[-42, -16, -138]}
+        position={[-47, -16, -138]}
         size={158}
         maxHeight={17.5}
         segments={15}
@@ -2246,6 +2256,21 @@ const RocketLandingScene = () => {
         castShadow
         receiveShadow
       />
+
+
+              <LowPolyMountain
+        position={[-112, -16, 0]}
+        size={158}
+        maxHeight={15.5}
+        segments={11}
+        color="#556B2F" // Darker olive
+        seed={132}
+        noiseScale={1.2}
+        noiseFactor={0.6}
+        castShadow
+        receiveShadow
+      />
+
 
 
  {/* 

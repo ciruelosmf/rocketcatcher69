@@ -166,13 +166,16 @@ const MIN_THRUST_FACTOR = THRUST_ACCELERATION_FACTOR; // Minimum is the base fac
 
 
 // A simple pseudo-random number generator for seeded randomness
-function mulberry32(a) {
+function mulberry32(a: number): () => number {
   return function() {
     var t = a += 0x6D2B79F5;
     t = Math.imul(t ^ t >>> 15, t | 1);
-    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
-    return ((t ^ t >>> 14) >>> 0) / 4294967296;
-  }
+    // Make sure the rest of your mulberry32 logic is correct
+    // A common implementation continues like this:
+    t = t ^ t >>> 13;
+    t = (t ^ t >>> 12) >>> 0; // Coerce to unsigned 32-bit integer
+    return t / 0x100000000;   // Divide by 2^32 to get a float [0,1)
+  };
 }
 
 /**

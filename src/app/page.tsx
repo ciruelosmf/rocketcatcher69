@@ -423,7 +423,7 @@ const LandingFloor3 = () => {
   const floorSegmentsDepth = 1; // Adjust for performance/detail
 
   // --- Define Visual Position & Rotation ---
-  const meshPosition: [number, number, number] = [106, PLATFORM_Y + 2.3, 0];
+  const meshPosition: [number, number, number] = [120, PLATFORM_Y - 1.3, 0];
   const meshRotation: [number, number, number] = [-Math.PI / 2, 0, 0];
 
   const geomRef = useRef<THREE.PlaneGeometry>(null!);

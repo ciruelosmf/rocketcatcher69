@@ -163,6 +163,158 @@ const MIN_THRUST_FACTOR = THRUST_ACCELERATION_FACTOR; // Minimum is the base fac
 
 
 
+
+
+// A simple pseudo-random number generator for seeded randomness
+function mulberry32(a) {
+  return function() {
+    var t = a += 0x6D2B79F5;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  }
+}
+
+/**
+ * @param {object} props
+ * @param {number} [props.size=10] - The width and depth of the mountain base.
+ * @param {number} [props.maxHeight=3] - The maximum possible height of the mountain peak.
+ * @param {number} [props.segments=20] - The number of width/depth segments (resolution).
+ * @param {string} [props.color='#658057'] - The color of the mountain.
+ * @param {number} [props.seed=12345] - Seed for random displacement.
+ * @param {number} [props.noiseScale=1.5] - How "zoomed in" the noise pattern is.
+ * @param {number} [props.noiseFactor=0.5] - How much the noise influences the height.
+ * @param {boolean} [props.animated=false] - Whether to animate the noise.
+ * @param {number} [props.animationSpeed=0.1] - Speed of animation if animated.
+ */
+function LowPolyMountain({
+  size = 10,
+  maxHeight = 3,
+  segments = 20,
+  color = '#658057', // A nice desaturated green
+  seed = 12345,
+  noiseScale = 1.5,
+  noiseFactor = 0.5,
+  animated = false,
+  animationSpeed = 0.1,
+  ...meshProps // Pass through any other mesh props (position, rotation, etc.)
+}) {
+  const geometryRef = useRef();
+  const time = useRef(0);
+
+  // Memoize the geometry so it's not recreated on every render
+  // unless its dependencies change.
+  const geometry = useMemo(() => {
+    const geom = new THREE.PlaneGeometry(size, size, segments, segments);
+    geom.rotateX(-Math.PI / 2); // Rotate to be flat on XZ plane
+
+    const random = mulberry32(seed); // Initialize PRNG with seed
+    const pos = geom.attributes.position;
+    const peakFalloff = size / 2; // Radius for falloff
+
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const z = pos.getZ(i);
+
+      // Radial falloff: closer to center = potentially higher
+      const distFromCenter = Math.sqrt(x * x + z * z);
+      let baseHeight = Math.max(0, 1 - distFromCenter / peakFalloff); // Normalized 0-1
+      baseHeight = baseHeight * baseHeight; // Steeper falloff (power of 2, could be higher)
+
+      // Simple pseudo-random noise (could be replaced with Perlin/Simplex for better results)
+      // We use two "octaves" of random values mixed together
+      let noise = 0;
+      // For more structured noise, one would use Perlin/Simplex.
+      // Here, we'll use a very basic approach with the seeded random.
+      // We scale x and z to get different random values for nearby points.
+      const nx = x / size * noiseScale;
+      const nz = z / size * noiseScale;
+      
+      // A very simple noise - for real terrain, use simplex or perlin
+      // This creates a somewhat jagged look using the seeded random
+      noise = (random() - 0.5) * 2; // range -1 to 1
+      noise += (random() - 0.5) * 0.5; // smaller contribution
+
+      // Combine base height with noise
+      let y = baseHeight * (1 - noiseFactor) + baseHeight * noiseFactor * noise;
+      y *= maxHeight;
+
+      pos.setY(i, Math.max(0, y)); // Ensure height is not negative
+    }
+
+    geom.computeVertexNormals(); // Important for lighting flat shaded surfaces
+    return geom;
+  }, [size, segments, maxHeight, seed, noiseScale, noiseFactor]);
+
+
+  // Optional animation for the noise (requires more complex noise function ideally)
+  useFrame((state, delta) => {
+    if (animated && geometryRef.current) {
+      time.current += delta * animationSpeed;
+      const random = mulberry32(seed); // Re-seed for consistent base per frame
+      const pos = geometryRef.current.attributes.position;
+      const peakFalloff = size / 2;
+
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i);
+        const z = pos.getZ(i);
+        
+        const distFromCenter = Math.sqrt(x * x + z * z);
+        let baseHeight = Math.max(0, 1 - distFromCenter / peakFalloff);
+        baseHeight = baseHeight * baseHeight;
+
+        // Animated noise - here just adding time to one of the coordinates
+        // A more robust animated noise would use 3D/4D Simplex/Perlin noise
+        const nx = x / size * noiseScale + time.current;
+        const nz = z / size * noiseScale;
+        
+        // This animation will be very basic with mulberry32,
+        // as it's not designed for coherent noise fields.
+        // Simplex noise would be much better here.
+        // For demonstration, we'll just slightly vary the seeded random based on time.
+        // This is a hack and not true animated coherent noise.
+        let noiseVal = (mulberry32(seed + Math.floor(nx*10) + Math.floor(nz*10) + Math.floor(time.current*10))() - 0.5) * 2;
+
+        let y = baseHeight * (1 - noiseFactor) + baseHeight * noiseFactor * noiseVal;
+        y *= maxHeight;
+
+        pos.setY(i, Math.max(0, y));
+      }
+      pos.needsUpdate = true;
+      geometryRef.current.computeVertexNormals();
+    }
+  });
+
+  return (
+    <mesh geometry={animated ? undefined : geometry} ref={animated ? geometryRef : undefined} {...meshProps}>
+      {animated && <primitive object={geometry} attach="geometry" />}
+      <meshStandardMaterial color={color} flatShading={true} roughness={0.8} metalness={0.2} />
+    </mesh>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // Wind
 const WIND_MAX_STRENGTH = 0.01; // 0 orginal 0.001;
 const getRandomWindVector = (): THREE.Vector3 => {
@@ -508,7 +660,7 @@ const StationRoad = () => {
     const roadScale = useMemo(() => new THREE.Vector3(ROAD_SCALE_X, ROAD_SCALE_Y, ROAD_SCALE_Z), []);
 
     // --- Load Model ---
-    const gltf = useLoader(GLTFLoader, '/buildings.glb'); // Make sure this path is correct!
+    const gltf = useLoader(GLTFLoader, '/buildings_2.glb'); // Make sure this path is correct!
 
     // --- Render ---
     // Wait until the GLTF is loaded
@@ -969,13 +1121,7 @@ const CaptureZoneVisualizer = () => {
 
 
 
-
-
-
-
  
-console.log(CAPTURE_TARGET_Y, "CAPTURE_TARGET_Y");
-
 
 
 
@@ -1180,8 +1326,9 @@ if (newState === 'playing' || newState === 'resetting') {
 
   // Create a memoized material instance
   const rocketMaterial = useMemo(() => new THREE.MeshStandardMaterial({
-    metalness: 0.6,
-    roughness: 0.4,
+    metalness: 1.1,
+    roughness: 1.4,
+    color : '#8f8f8f',
     // side: THREE.DoubleSide // Optional: If some faces are invisible
 }), []);
 
@@ -1253,7 +1400,7 @@ const handleCollision = (event: CollisionPayload) => {
 
           // Stop the rocket immediately upon crash
           if (rocketApi.current) {
-            console.log(22);
+ 
             rocketApi.current.resetForces(true); 
               rocketApi.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
               rocketApi.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
@@ -1534,10 +1681,10 @@ const landedRotationRef = useRef<{ x: number, y: number, z: number, w: number } 
   // --- Fall Off Bottom Check ---
   // This part remains the same
   if (currentPosition.y < SCENE_BOUNDS_BOTTOM) {
-      console.log("Fell off bottom.");
+ 
 
       if (gameStateRef.current !== 'crashed') { 
-          console.log("gameStateRef.current !== 'crashed.");
+ 
       // Prevent multiple messages
           setGameState('crashed');
           setStatusMessage('Lost in space... Press R.');
@@ -1571,7 +1718,7 @@ if (gameStateRef.current === 'landed' && rocketApi.current && landedPositionRef.
           ref={rocketApi}
           colliders={false} // Use manual collider below
           position={initialPosition}
-          // rotation={[0, Math.PI / (3.2) , 0]}
+          
 
           linearDamping={ROCKET_LINEAR_DAMPING}
           angularDamping={1.0}
@@ -1594,6 +1741,8 @@ if (gameStateRef.current === 'landed' && rocketApi.current && landedPositionRef.
               object={obj}        // The loaded OBJ (as a THREE.Group)
               scale={modelScale}  // Apply the calculated scale
               position={[0, -colliderHalfHeight, 0]}
+              
+
           >
               {/* Cockpit camera is added as a child via useLayoutEffect */}
 
@@ -1873,7 +2022,7 @@ const RocketLandingScene = () => {
 
  
 
-  const [isGameStarted, setIsGameStarted] = useState(false);
+  const [isGameStarted, setIsGameStarted] = useState(true);
   const [isRocketLanded, setIsRocketLanded] = useState(false);
   const [isRocketCrashed, setIsRocketCrashed] = useState(false); 
   const [stationaryCamera] = useState(() => {
@@ -1971,7 +2120,7 @@ const RocketLandingScene = () => {
   }, []);
 
   const handleRestartWithReload = React.useCallback(() => {
-    console.log("Restart triggered: Reloading page...");
+ 
     if (typeof window !== 'undefined') { // Good practice check
          window.location.reload();
     }
@@ -2000,7 +2149,7 @@ const RocketLandingScene = () => {
  
     >
       <Suspense fallback={null}>
-        <Skybox imageUrl="/back.jpg" />
+        
 
   {/*
     <fog attach="fog" args={['#abcdef', 50, 170]} />
@@ -2068,6 +2217,33 @@ const RocketLandingScene = () => {
 
         <LandingFloor/>
         <LandingFloor3/>
+              <LowPolyMountain
+        position={[-42, -16, -138]}
+        size={158}
+        maxHeight={17.5}
+        segments={15}
+        color="#556B2F" // Darker olive
+        seed={123}
+        noiseScale={1.2}
+        noiseFactor={0.6}
+        castShadow
+        receiveShadow
+      />
+
+
+              <LowPolyMountain
+        position={[-52, -16, 98]}
+        size={158}
+        maxHeight={15.5}
+        segments={11}
+        color="#556B2F" // Darker olive
+        seed={132}
+        noiseScale={1.2}
+        noiseFactor={0.6}
+        castShadow
+        receiveShadow
+      />
+
 
  {/* 
         < Waterfloor/>

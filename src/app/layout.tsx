@@ -15,8 +15,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "RocketGrab",
-  description: "Rocket Landing Low-Level Simulation Game ",
+  title: "RockerCatcher69",
+  description: "Rocket Catching Low-Level Simulation Game ",
 };
 
 export default function RootLayout({
